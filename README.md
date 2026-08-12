@@ -25,6 +25,27 @@ Plain text/Markdown is accepted everywhere JSON sometimes isn't, and it's
 meaningfully cheaper in tokens than JSON's braces/quotes/escaped newlines
 for what is mostly prose fields.
 
+The export is written as a **reference corpus**, not a data dump: every
+format opens with an explicit note telling the reading model "these are N
+separate existing characters — compare them for patterns, then design a
+new one, don't copy any single card verbatim," and every card gets an
+unambiguous `=== CARD i/N ===` (or `## Card i/N`) section so it can't get
+blended into its neighbors. That's the intended workflow — extract a batch
+(say, your top 100 cards), upload the export, and prompt something like
+"use this file as reference for what makes these cards work, then create a
+new character."
+
+Six fields are always present for every card (truncated per `--max-chars`,
+never dropped, unless `--full`): **name, description, personality,
+scenario, first_mes, mes_example**. `tags` and `creator_notes` are also
+included by default — tags are the closest thing to a genre/archetype
+label, and creator notes are often where a creator explains what a card is
+for, which is exactly the "why do people use this" signal a reference
+corpus needs. Everything else (system prompt, post-history instructions,
+full alternate greetings, full lorebook text) is more runtime
+configuration than content signal, so by default it's summarized to a
+count and only spelled out with `--full`.
+
 ## Requirements
 
 Python 3.10+, standard library only — nothing to `pip install` to run it.
@@ -94,9 +115,9 @@ bestcards ./my_cards -o cards_export.md
   `chara` (V2, or unwrapped **V1** for older exports) — matching how real
   exporters lay out multi-spec cards.
 - Normalizes whichever spec version it finds into one common set of fields
-  (name, description, personality, scenario, greeting(s), system prompt,
-  example dialogue, lorebook entries, tags, creator, ...), so the rest of
-  the pipeline never has to special-case spec version.
+  (name, description, personality, scenario, greeting(s), example dialogue,
+  creator notes, system prompt, lorebook entries, tags, creator, ...), so
+  the rest of the pipeline never has to special-case spec version.
 - Cards with no recognizable payload are skipped and reported, not fatal to
   the batch.
 - Every export starts with a corpus-stats block (card count, spec-version
