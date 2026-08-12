@@ -81,10 +81,7 @@ def to_markdown(cards: Iterable[Card], *, full: bool = False, max_chars: int | N
     for i, card in enumerate(cards, 1):
         title = card.name or card.nickname or "(unnamed)"
         lines.append(f"## Card {i}/{len(cards)}: {title}")
-        meta_bits = [f"file: {_basename(card.source_file)}", f"spec: v{card.spec_version}"]
-        if card.creator:
-            meta_bits.append(f"creator: {card.creator}")
-        lines.append(f"- ({', '.join(meta_bits)})")
+        lines.append(f"- (file: {_basename(card.source_file)})")
         if card.tags:
             lines.append(f"- Tags: {', '.join(card.tags)}")
         if card.description:
@@ -172,7 +169,6 @@ def card_to_dict(card: Card, *, full: bool = True) -> dict:
     d = {
         "name": card.name,
         "nickname": card.nickname,
-        "creator": card.creator,
         "character_version": card.character_version,
         "tags": card.tags,
         "description": card.description,

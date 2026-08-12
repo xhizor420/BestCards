@@ -46,6 +46,10 @@ full alternate greetings, full lorebook text) is more runtime
 configuration than content signal, so by default it's summarized to a
 count and only spelled out with `--full`.
 
+Attribution (who made the card, `creator`) is intentionally left out of
+every export — it's not a content pattern a model can learn from, just
+token cost with no analytical payoff for this use case.
+
 ## Requirements
 
 Python 3.10+, standard library only — nothing to `pip install` to run it.
@@ -116,12 +120,12 @@ bestcards ./my_cards -o cards_export.md
   exporters lay out multi-spec cards.
 - Normalizes whichever spec version it finds into one common set of fields
   (name, description, personality, scenario, greeting(s), example dialogue,
-  creator notes, system prompt, lorebook entries, tags, creator, ...), so
-  the rest of the pipeline never has to special-case spec version.
+  creator notes, system prompt, lorebook entries, tags, ...), so the rest
+  of the pipeline never has to special-case spec version.
 - Cards with no recognizable payload are skipped and reported, not fatal to
   the batch.
 - Every export starts with a corpus-stats block (card count, spec-version
-  mix, top tags, top creators, average description length) and ends with a
+  mix, top tags, average description length) and ends with a
   rough token-count estimate, so before you paste hundreds of cards into a
   model you know roughly what you're about to spend and what the batch
   looks like at a glance.
