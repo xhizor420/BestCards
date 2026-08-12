@@ -29,7 +29,26 @@ for what is mostly prose fields.
 
 Python 3.10+, standard library only — nothing to `pip install` to run it.
 
-## Usage
+## Browser UI
+
+```bash
+python3 ui.py
+# -> opens http://127.0.0.1:8765/ in your browser
+```
+
+Drag a folder (or a pile of PNGs) onto the page, or use "Choose PNG files" /
+"Choose a folder" to browse. Each file is uploaded to a small local server
+(nothing leaves your machine) and a progress bar tracks how many of the
+batch have been processed so far. When it's done you get a success/skip
+count, pick a format (Markdown / compact / JSON), and click **Generate &
+download export** to save the combined file. This is the same extraction
+and export logic as the CLI below, just with drag-and-drop instead of flags.
+
+Options: `python3 ui.py --port 9000`, `--no-browser` to skip auto-opening a
+tab, `--host 0.0.0.0` to allow other devices on your LAN to reach it (only
+do this on a network you trust — the server has no auth).
+
+## CLI Usage
 
 ```bash
 # Scan a folder of PNGs (recursively) and write a Markdown digest
@@ -80,6 +99,11 @@ bestcards ./my_cards -o cards_export.md
   the pipeline never has to special-case spec version.
 - Cards with no recognizable payload are skipped and reported, not fatal to
   the batch.
+- Every export starts with a corpus-stats block (card count, spec-version
+  mix, top tags, top creators, average description length) and ends with a
+  rough token-count estimate, so before you paste hundreds of cards into a
+  model you know roughly what you're about to spend and what the batch
+  looks like at a glance.
 
 ## Development
 

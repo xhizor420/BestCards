@@ -14,6 +14,7 @@ import json
 from typing import Iterable
 
 from .cardspec import Card
+from .stats import build_corpus_stats, estimate_tokens, format_stats_block
 
 # Fields whose text can be huge relative to how useful they are for
 # cross-card pattern analysis. In "digest" (non --full) mode we cap them.
@@ -42,6 +43,9 @@ def to_markdown(cards: Iterable[Card], *, full: bool = False, max_chars: int | N
         "Combined, de-duplicated export of embedded character-card metadata "
         "from a batch of PNG cards (SillyTavern/JanitorAI/Chub V1-V3 format)."
     )
+    lines.append("")
+    lines.append("## Corpus Stats")
+    lines.append(format_stats_block(build_corpus_stats(cards)))
     lines.append("")
     for i, card in enumerate(cards, 1):
         title = card.name or card.nickname or "(unnamed)"
@@ -81,7 +85,8 @@ def to_markdown(cards: Iterable[Card], *, full: bool = False, max_chars: int | N
             else:
                 lines.append(f"- Lorebook: {len(card.lorebook_entries)} entries (use --full to include)")
         lines.append("")
-    return "\n".join(lines).rstrip() + "\n"
+    body = "\n".join(lines).rstrip() + "\n"
+    return body + f"\n---\n~{estimate_tokens(body)} tokens (rough estimate, ~4 chars/token)\n"
 
 
 # Abbreviated field labels for the compact format, documented in a header
@@ -96,7 +101,8 @@ _COMPACT_LEGEND = (
 def to_compact(cards: Iterable[Card], *, full: bool = False, max_chars: int | None = _DEFAULT_MAX_CHARS) -> str:
     cards = list(cards)
     cap = None if full else max_chars
-    lines: list[str] = [f"# {len(cards)} cards | fields: {_COMPACT_LEGEND}", ""]
+    stats_line = format_stats_block(build_corpus_stats(cards), compact=True)
+    lines: list[str] = [f"# {len(cards)} cards | fields: {_COMPACT_LEGEND}", f"# stats: {stats_line}", ""]
     for i, card in enumerate(cards, 1):
         lines.append(f"#{i}")
         title = card.name or card.nickname or "(unnamed)"
@@ -122,10 +128,11 @@ def to_compact(cards: Iterable[Card], *, full: bool = False, max_chars: int | No
         if card.lorebook_entries:
             lines.append(f"LB: {len(card.lorebook_entries)}")
         lines.append("")
-    return "\n".join(lines).rstrip() + "\n"
+    body = "\n".join(lines).rstrip() + "\n"
+    return body + f"\n# ~{estimate_tokens(body)} tokens (rough estimate)\n"
 
 
-def _card_to_dict(card: Card, *, full: bool = True) -> dict:
+def card_to_dict(card: Card, *, full: bool = True) -> dict:
     d = {
         "name": card.name,
         "nickname": card.nickname,
@@ -153,7 +160,13 @@ def _card_to_dict(card: Card, *, full: bool = True) -> dict:
 def to_json(cards: Iterable[Card], *, full: bool = False, max_chars: int | None = None) -> str:
     del max_chars  # JSON output is governed by --full only, not truncation
     cards = list(cards)
-    payload = {"count": len(cards), "cards": [_card_to_dict(c, full=full) for c in cards]}
+    payload = {
+        "count": len(cards),
+        "stats": build_corpus_stats(cards),
+        "cards": [card_to_dict(c, full=full) for c in cards],
+    }
+    text = json.dumps(payload, indent=2, ensure_ascii=False)
+    payload["approx_tokens"] = estimate_tokens(text)
     return json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
 
 

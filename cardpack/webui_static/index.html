@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BestCards</title>
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<header>
+  <h1>BestCards</h1>
+  <p class="subtitle">Batch-extract character card data from PNGs into one compact export.</p>
+</header>
+
+<main>
+  <section id="dropzone" class="dropzone">
+    <p class="dropzone-hint">Drag &amp; drop PNG files or a folder here</p>
+    <p class="dropzone-or">or</p>
+    <div class="picker-buttons">
+      <button type="button" id="pickFilesBtn">Choose PNG files</button>
+      <button type="button" id="pickFolderBtn">Choose a folder</button>
+    </div>
+    <input type="file" id="fileInput" accept=".png,image/png" multiple hidden>
+    <input type="file" id="folderInput" webkitdirectory directory multiple hidden>
+  </section>
+
+  <section id="progressSection" class="progress-section hidden">
+    <div class="progress-bar-track">
+      <div id="progressBar" class="progress-bar-fill"></div>
+    </div>
+    <p id="progressText" class="progress-text">Processing 0 / 0 PNGs…</p>
+  </section>
+
+  <section id="summarySection" class="summary-section hidden">
+    <p>
+      <strong id="successCount">0</strong> cards extracted,
+      <strong id="failCount">0</strong> skipped
+      (<button type="button" id="toggleFailuresBtn" class="link-btn">show details</button>)
+    </p>
+    <ul id="failuresList" class="failures-list hidden"></ul>
+  </section>
+
+  <section id="exportSection" class="export-section hidden">
+    <h2>Export</h2>
+    <div class="export-options">
+      <label>Format
+        <select id="formatSelect">
+          <option value="md" selected>Markdown digest (readable)</option>
+          <option value="compact">Compact (fewest tokens)</option>
+          <option value="json">JSON (full fidelity)</option>
+        </select>
+      </label>
+      <label>Sort by
+        <select id="sortSelect">
+          <option value="name" selected>Character name</option>
+          <option value="file">Source filename</option>
+        </select>
+      </label>
+      <label class="checkbox-label">
+        <input type="checkbox" id="fullCheckbox">
+        Include everything (full example dialogue, all alt greetings, full lorebook)
+      </label>
+      <label id="maxCharsLabel">Per-field cap (chars)
+        <input type="number" id="maxCharsInput" value="600" min="50" step="50">
+      </label>
+    </div>
+    <button type="button" id="exportBtn" class="primary-btn">Generate &amp; download export</button>
+    <p id="exportResult" class="export-result"></p>
+    <button type="button" id="resetBtn" class="link-btn">Start a new batch</button>
+  </section>
+</main>
+
+<script src="/app.js"></script>
+</body>
+</html>

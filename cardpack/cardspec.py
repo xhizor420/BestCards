@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import dataclasses
 import json
 from dataclasses import dataclass, field
 from typing import Any
@@ -80,6 +81,14 @@ class Card:
 
     def is_empty(self) -> bool:
         return not (self.name or self.description or self.personality or self.first_mes)
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> "Card":
+        """Rebuild a Card from a dict shaped like formats.card_to_dict()'s
+        output (full=True) — used by the web UI to round-trip cards that
+        were extracted server-side and handed to the browser as JSON."""
+        known = {f.name for f in dataclasses.fields(cls)}
+        return cls(**{k: v for k, v in d.items() if k in known})
 
 
 class CardExtractionError(ValueError):
