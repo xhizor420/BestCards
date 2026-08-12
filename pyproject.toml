@@ -1,0 +1,19 @@
+[project]
+name = "bestcards"
+version = "0.1.0"
+description = "Batch-extract embedded V1/V2/V3 character card data from PNG files into a compact, model-friendly export."
+requires-python = ">=3.10"
+dependencies = []
+
+[project.scripts]
+bestcards = "cardpack.cli:main"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["cardpack"]
+
+[project.optional-dependencies]
+dev = ["pytest"]
