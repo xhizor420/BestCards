@@ -64,10 +64,20 @@ python3 ui.py
 Drag a folder (or a pile of PNGs) onto the page, or use "Choose PNG files" /
 "Choose a folder" to browse. Each file is uploaded to a small local server
 (nothing leaves your machine) and a progress bar tracks how many of the
-batch have been processed so far. When it's done you get a success/skip
-count, pick a format (Markdown / compact / JSON), and click **Generate &
-download export** to save the combined file. This is the same extraction
-and export logic as the CLI below, just with drag-and-drop instead of flags.
+batch have been processed so far.
+
+Once extraction finishes you get a grid of every card — thumbnail, name,
+and its own token cost (`~113 tok`) — plus a running **total tokens**
+counter above it. Change format / `--full` / per-field cap and the counter
+and every per-card badge re-estimate live, so you can see exactly what a
+setting costs before exporting. Click the **×** on any tile to drop that
+card from the export entirely (it's removed from the total instantly, and
+won't be in the downloaded file) — useful for trimming a batch down to
+your actual token budget without re-uploading. Pick a format (Markdown /
+compact / JSON) and click **Generate & download export** to save the
+combined file. This is the same extraction and export logic as the CLI
+below, just with drag-and-drop and live per-card visibility instead of
+flags.
 
 Options: `python3 ui.py --port 9000`, `--no-browser` to skip auto-opening a
 tab, `--host 0.0.0.0` to allow other devices on your LAN to reach it (only

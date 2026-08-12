@@ -64,6 +64,14 @@
         <input type="number" id="maxCharsInput" value="600" min="50" step="50">
       </label>
     </div>
+
+    <div class="token-total">
+      <span id="totalTokens">~0</span> tokens total
+      <span class="token-total-hint">(rough estimate for the export as configured below)</span>
+    </div>
+
+    <div id="cardGrid" class="card-grid"></div>
+
     <button type="button" id="exportBtn" class="primary-btn">Generate &amp; download export</button>
     <p id="exportResult" class="export-result"></p>
     <button type="button" id="resetBtn" class="link-btn">Start a new batch</button>

@@ -22,13 +22,17 @@ const sortSelect = document.getElementById("sortSelect");
 const fullCheckbox = document.getElementById("fullCheckbox");
 const maxCharsLabel = document.getElementById("maxCharsLabel");
 const maxCharsInput = document.getElementById("maxCharsInput");
+const totalTokensEl = document.getElementById("totalTokens");
+const cardGrid = document.getElementById("cardGrid");
 const exportBtn = document.getElementById("exportBtn");
 const exportResult = document.getElementById("exportResult");
 const resetBtn = document.getElementById("resetBtn");
 
-let extractedCards = [];
+// Each entry: { card: {...extracted fields...}, file: File, thumbUrl: string }
+let entries = [];
 let extractionFailures = [];
 let isProcessing = false;
+let estimateRequestId = 0;
 
 const CONCURRENCY = 6;
 const PNG_RE = /\.png$/i;
@@ -41,11 +45,11 @@ function readAllDirectoryEntries(reader) {
   return new Promise((resolve, reject) => {
     let all = [];
     (function readBatch() {
-      reader.readEntries((entries) => {
-        if (!entries.length) {
+      reader.readEntries((batch) => {
+        if (!batch.length) {
           resolve(all);
         } else {
-          all = all.concat(entries);
+          all = all.concat(batch);
           readBatch();
         }
       }, reject);
@@ -60,8 +64,8 @@ async function traverseEntry(entry) {
   }
   if (entry.isDirectory) {
     const reader = entry.createReader();
-    const entries = await readAllDirectoryEntries(reader);
-    const nested = await Promise.all(entries.map(traverseEntry));
+    const dirEntries = await readAllDirectoryEntries(reader);
+    const nested = await Promise.all(dirEntries.map(traverseEntry));
     return nested.flat();
   }
   return [];
@@ -70,10 +74,10 @@ async function traverseEntry(entry) {
 async function filesFromDataTransfer(dataTransfer) {
   const items = dataTransfer.items;
   if (items && items.length && items[0].webkitGetAsEntry) {
-    const entries = Array.from(items)
+    const fsEntries = Array.from(items)
       .map((item) => (item.webkitGetAsEntry ? item.webkitGetAsEntry() : null))
       .filter(Boolean);
-    const nested = await Promise.all(entries.map(traverseEntry));
+    const nested = await Promise.all(fsEntries.map(traverseEntry));
     return nested.flat();
   }
   return Array.from(dataTransfer.files || []);
@@ -115,7 +119,7 @@ async function processFiles(files) {
       try {
         const data = await extractOne(file);
         if (data.ok) {
-          successes.push(data.card);
+          successes.push({ card: data.card, file, thumbUrl: URL.createObjectURL(file) });
         } else {
           failures.push({ name: file.name, error: data.error || "unknown error" });
         }
@@ -133,10 +137,10 @@ async function processFiles(files) {
 }
 
 function renderSummary() {
-  successCountEl.textContent = String(extractedCards.length);
+  successCountEl.textContent = String(entries.length);
   failCountEl.textContent = String(extractionFailures.length);
-  summarySection.classList.toggle("hidden", extractedCards.length === 0 && extractionFailures.length === 0);
-  exportSection.classList.toggle("hidden", extractedCards.length === 0);
+  summarySection.classList.toggle("hidden", entries.length === 0 && extractionFailures.length === 0);
+  exportSection.classList.toggle("hidden", entries.length === 0);
 
   failuresList.innerHTML = "";
   for (const f of extractionFailures) {
@@ -145,6 +149,101 @@ function renderSummary() {
     failuresList.appendChild(li);
   }
 }
+
+function renderCardGrid() {
+  cardGrid.innerHTML = "";
+  entries.forEach((entry, index) => {
+    const tile = document.createElement("div");
+    tile.className = "card-tile";
+
+    const img = document.createElement("img");
+    img.src = entry.thumbUrl;
+    img.loading = "lazy";
+    img.alt = entry.card.name || "card";
+    tile.appendChild(img);
+
+    const removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    removeBtn.className = "card-tile-remove";
+    removeBtn.title = "Remove from export";
+    removeBtn.textContent = "×";
+    removeBtn.addEventListener("click", () => removeEntry(index));
+    tile.appendChild(removeBtn);
+
+    const info = document.createElement("div");
+    info.className = "card-tile-info";
+
+    const name = document.createElement("div");
+    name.className = "card-tile-name";
+    name.textContent = entry.card.name || entry.card.nickname || "(unnamed)";
+    name.title = name.textContent;
+    info.appendChild(name);
+
+    const tokens = document.createElement("div");
+    tokens.className = "card-tile-tokens";
+    tokens.dataset.role = "tokens";
+    tokens.textContent = "…";
+    info.appendChild(tokens);
+
+    tile.appendChild(info);
+    cardGrid.appendChild(tile);
+  });
+}
+
+function removeEntry(index) {
+  const [removed] = entries.splice(index, 1);
+  if (removed) URL.revokeObjectURL(removed.thumbUrl);
+  renderSummary();
+  renderCardGrid();
+  refreshEstimate();
+}
+
+function currentExportOptions() {
+  return {
+    format: formatSelect.value,
+    sort: sortSelect.value,
+    full: fullCheckbox.checked,
+    max_chars: parseInt(maxCharsInput.value, 10) || 600,
+  };
+}
+
+async function refreshEstimate() {
+  if (!entries.length) {
+    totalTokensEl.textContent = "~0";
+    return;
+  }
+  const requestId = ++estimateRequestId;
+  try {
+    const res = await fetch("/api/estimate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cards: entries.map((e) => e.card), ...currentExportOptions() }),
+    });
+    const data = await res.json();
+    if (requestId !== estimateRequestId) return; // a newer request superseded this one
+    if (!res.ok) throw new Error(data.error || `server error ${res.status}`);
+
+    totalTokensEl.textContent = `~${data.total_tokens.toLocaleString()}`;
+    const tiles = cardGrid.querySelectorAll(".card-tile");
+    data.cards.forEach((c, i) => {
+      const badge = tiles[i] && tiles[i].querySelector('[data-role="tokens"]');
+      if (badge) badge.textContent = `~${c.tokens.toLocaleString()} tok`;
+    });
+  } catch (err) {
+    if (requestId === estimateRequestId) {
+      totalTokensEl.textContent = "?";
+    }
+  }
+}
+
+function debounce(fn, delayMs) {
+  let handle;
+  return (...args) => {
+    clearTimeout(handle);
+    handle = setTimeout(() => fn(...args), delayMs);
+  };
+}
+const debouncedEstimate = debounce(refreshEstimate, 300);
 
 async function handleFiles(rawFiles) {
   if (isProcessing) return;
@@ -161,12 +260,14 @@ async function handleFiles(rawFiles) {
   exportSection.classList.add("hidden");
 
   const { successes, failures } = await processFiles(files);
-  extractedCards = extractedCards.concat(successes);
+  entries = entries.concat(successes);
   extractionFailures = extractionFailures.concat(failures);
 
   isProcessing = false;
   setProgressVisible(false);
   renderSummary();
+  renderCardGrid();
+  refreshEstimate();
 }
 
 // --- drag and drop -------------------------------------------------------
@@ -209,29 +310,31 @@ toggleFailuresBtn.addEventListener("click", () => {
   toggleFailuresBtn.textContent = showing ? "show details" : "hide details";
 });
 
-// --- export ----------------------------------------------------------------
+// --- export options: live token re-estimate -------------------------------
 
 function updateMaxCharsVisibility() {
   maxCharsLabel.classList.toggle("hidden", fullCheckbox.checked);
 }
-fullCheckbox.addEventListener("change", updateMaxCharsVisibility);
+fullCheckbox.addEventListener("change", () => {
+  updateMaxCharsVisibility();
+  refreshEstimate();
+});
+formatSelect.addEventListener("change", refreshEstimate);
+sortSelect.addEventListener("change", refreshEstimate);
+maxCharsInput.addEventListener("input", debouncedEstimate);
 updateMaxCharsVisibility();
 
+// --- export ----------------------------------------------------------------
+
 exportBtn.addEventListener("click", async () => {
-  if (!extractedCards.length) return;
+  if (!entries.length) return;
   exportBtn.disabled = true;
   exportResult.textContent = "Generating export…";
   try {
     const res = await fetch("/api/export", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        cards: extractedCards,
-        format: formatSelect.value,
-        sort: sortSelect.value,
-        full: fullCheckbox.checked,
-        max_chars: parseInt(maxCharsInput.value, 10) || 600,
-      }),
+      body: JSON.stringify({ cards: entries.map((e) => e.card), ...currentExportOptions() }),
     });
     const data = await res.json();
     if (!res.ok) {
@@ -257,9 +360,12 @@ exportBtn.addEventListener("click", async () => {
 // --- reset -------------------------------------------------------------
 
 resetBtn.addEventListener("click", () => {
-  extractedCards = [];
+  for (const entry of entries) URL.revokeObjectURL(entry.thumbUrl);
+  entries = [];
   extractionFailures = [];
   renderSummary();
+  renderCardGrid();
+  totalTokensEl.textContent = "~0";
   exportResult.textContent = "";
   setProgressVisible(false);
 });

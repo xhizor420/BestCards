@@ -99,3 +99,17 @@ def test_api_export_compact_and_json_formats(live_server):
         assert status == 200
         assert data["filename"] == f"cards_export.{ext}"
         assert "Aria" in data["content"]
+
+
+def test_api_estimate_returns_total_and_per_card_tokens(live_server):
+    png_bytes = build_png([("tEXt", "chara", b64_json(card_v2_payload(name="Aria")))])
+    _, extract_data = _post(f"{live_server}/api/extract?name=aria.png", png_bytes)
+    card = extract_data["card"]
+
+    body = json.dumps({"cards": [card], "format": "compact", "full": False, "max_chars": 600}).encode("utf-8")
+    status, data = _post(f"{live_server}/api/estimate", body, {"Content-Type": "application/json"})
+    assert status == 200
+    assert data["total_tokens"] > 0
+    assert len(data["cards"]) == 1
+    assert data["cards"][0]["name"] == "Aria"
+    assert data["cards"][0]["tokens"] > 0

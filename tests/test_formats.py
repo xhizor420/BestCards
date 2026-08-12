@@ -1,5 +1,5 @@
 from cardpack.cardspec import parse_card_payload
-from cardpack.formats import to_compact, to_json, to_markdown
+from cardpack.formats import estimate_export, to_compact, to_json, to_markdown
 from cardpack.png_chunks import read_text_chunks
 from tests.conftest import b64_json, build_png, card_v2_payload
 
@@ -46,3 +46,29 @@ def test_json_roundtrip_has_expected_shape():
     out = to_json([card], full=True)
     assert '"name": "Aria"' in out
     assert '"count": 1' in out
+
+
+def test_estimate_export_reports_total_and_per_card_tokens():
+    small = _sample_card(name="Small", description="short")
+    big = _sample_card(name="Big", description="x" * 5000)
+    result = estimate_export([small, big], format="compact", full=False, max_chars=600)
+
+    assert result["total_tokens"] > 0
+    assert len(result["cards"]) == 2
+    assert result["cards"][0]["name"] == "Small"
+    assert result["cards"][1]["name"] == "Big"
+    # The truncated-but-longer description should still cost more tokens
+    # than the short one, even after both are capped at max_chars.
+    assert result["cards"][1]["tokens"] > result["cards"][0]["tokens"]
+    # Per-card tokens are each card's own section, not shared preamble, so
+    # they should sum to comfortably less than the full export's total.
+    assert sum(c["tokens"] for c in result["cards"]) < result["total_tokens"]
+
+
+def test_estimate_export_rejects_unknown_format():
+    card = _sample_card()
+    try:
+        estimate_export([card], format="xml")
+        assert False, "expected ValueError"
+    except ValueError:
+        pass

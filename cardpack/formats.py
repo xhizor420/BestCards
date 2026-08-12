@@ -24,6 +24,12 @@ this" signal a reference corpus is for. Everything else (system prompt,
 post-history instructions, full alternate greetings, full lorebook text)
 is configuration/runtime detail rather than content signal, so it's
 summarized to a count by default and only spelled out with --full.
+
+Each writer builds its body from a per-card line-renderer (_markdown_card_
+lines / _compact_card_lines) rather than inlining the loop, so the web UI's
+per-card token estimate (estimate_export, below) renders exactly the same
+text a real export would contain for that card — no second implementation
+to drift out of sync.
 """
 
 from __future__ import annotations
@@ -67,6 +73,43 @@ def _basename(path: str) -> str:
     return os.path.basename(path) if path else ""
 
 
+def _markdown_card_lines(i: int, total: int, card: Card, cap: int | None, *, full: bool) -> list[str]:
+    title = card.name or card.nickname or "(unnamed)"
+    lines = [f"## Card {i}/{total}: {title}", f"- (file: {_basename(card.source_file)})"]
+    if card.tags:
+        lines.append(f"- Tags: {', '.join(card.tags)}")
+    if card.description:
+        lines.append(f"- Description: {_truncate(_clean(card.description), cap)}")
+    if card.personality:
+        lines.append(f"- Personality: {_truncate(_clean(card.personality), cap)}")
+    if card.scenario:
+        lines.append(f"- Scenario: {_truncate(_clean(card.scenario), cap)}")
+    if card.first_mes:
+        lines.append(f"- First message: {_truncate(_clean(card.first_mes), cap)}")
+    if card.mes_example:
+        lines.append(f"- Example dialogue: {_truncate(_clean(card.mes_example), cap)}")
+    if card.creator_notes:
+        lines.append(f"- Creator notes: {_truncate(_clean(card.creator_notes), cap)}")
+    if full and card.alternate_greetings:
+        lines.append(f"- Alt greetings ({len(card.alternate_greetings)}):")
+        for g in card.alternate_greetings:
+            lines.append(f"  - {_truncate(_clean(g), cap)}")
+    elif card.alternate_greetings:
+        lines.append(f"- Alt greetings: {len(card.alternate_greetings)} (use --full to include)")
+    if full and card.system_prompt:
+        lines.append(f"- System prompt: {_truncate(_clean(card.system_prompt), cap)}")
+    if full and card.lorebook_entries:
+        lines.append(f"- Lorebook ({len(card.lorebook_entries)} entries):")
+        for entry in card.lorebook_entries:
+            keys = ", ".join(entry.get("keys") or [])
+            content = _truncate(_clean(entry.get("content", "")), cap)
+            lines.append(f"  - [{keys}] {content}")
+    elif card.lorebook_entries:
+        lines.append(f"- Lorebook: {len(card.lorebook_entries)} entries (use --full to include)")
+    lines.append("")
+    return lines
+
+
 def to_markdown(cards: Iterable[Card], *, full: bool = False, max_chars: int | None = _DEFAULT_MAX_CHARS) -> str:
     cards = list(cards)
     cap = None if full else max_chars
@@ -79,40 +122,7 @@ def to_markdown(cards: Iterable[Card], *, full: bool = False, max_chars: int | N
     lines.append(format_stats_block(build_corpus_stats(cards)))
     lines.append("")
     for i, card in enumerate(cards, 1):
-        title = card.name or card.nickname or "(unnamed)"
-        lines.append(f"## Card {i}/{len(cards)}: {title}")
-        lines.append(f"- (file: {_basename(card.source_file)})")
-        if card.tags:
-            lines.append(f"- Tags: {', '.join(card.tags)}")
-        if card.description:
-            lines.append(f"- Description: {_truncate(_clean(card.description), cap)}")
-        if card.personality:
-            lines.append(f"- Personality: {_truncate(_clean(card.personality), cap)}")
-        if card.scenario:
-            lines.append(f"- Scenario: {_truncate(_clean(card.scenario), cap)}")
-        if card.first_mes:
-            lines.append(f"- First message: {_truncate(_clean(card.first_mes), cap)}")
-        if card.mes_example:
-            lines.append(f"- Example dialogue: {_truncate(_clean(card.mes_example), cap)}")
-        if card.creator_notes:
-            lines.append(f"- Creator notes: {_truncate(_clean(card.creator_notes), cap)}")
-        if full and card.alternate_greetings:
-            lines.append(f"- Alt greetings ({len(card.alternate_greetings)}):")
-            for g in card.alternate_greetings:
-                lines.append(f"  - {_truncate(_clean(g), cap)}")
-        elif card.alternate_greetings:
-            lines.append(f"- Alt greetings: {len(card.alternate_greetings)} (use --full to include)")
-        if full and card.system_prompt:
-            lines.append(f"- System prompt: {_truncate(_clean(card.system_prompt), cap)}")
-        if full and card.lorebook_entries:
-            lines.append(f"- Lorebook ({len(card.lorebook_entries)} entries):")
-            for entry in card.lorebook_entries:
-                keys = ", ".join(entry.get("keys") or [])
-                content = _truncate(_clean(entry.get("content", "")), cap)
-                lines.append(f"  - [{keys}] {content}")
-        elif card.lorebook_entries:
-            lines.append(f"- Lorebook: {len(card.lorebook_entries)} entries (use --full to include)")
-        lines.append("")
+        lines.extend(_markdown_card_lines(i, len(cards), card, cap, full=full))
     body = "\n".join(lines).rstrip() + "\n"
     return body + f"\n---\n~{estimate_tokens(body)} tokens (rough estimate, ~4 chars/token)\n"
 
@@ -126,6 +136,33 @@ _COMPACT_LEGEND = (
 )
 
 
+def _compact_card_lines(i: int, total: int, card: Card, cap: int | None, *, full: bool) -> list[str]:
+    title = card.name or card.nickname or "(unnamed)"
+    lines = [f"=== CARD {i}/{total} ===", f"N: {title}"]
+    if card.tags:
+        lines.append(f"T: {', '.join(card.tags)}")
+    if card.description:
+        lines.append(f"D: {_truncate(_clean(card.description), cap)}")
+    if card.personality:
+        lines.append(f"P: {_truncate(_clean(card.personality), cap)}")
+    if card.scenario:
+        lines.append(f"S: {_truncate(_clean(card.scenario), cap)}")
+    if card.first_mes:
+        lines.append(f"G: {_truncate(_clean(card.first_mes), cap)}")
+    if card.mes_example:
+        lines.append(f"EX: {_truncate(_clean(card.mes_example), cap)}")
+    if card.creator_notes:
+        lines.append(f"CN: {_truncate(_clean(card.creator_notes), cap)}")
+    if card.alternate_greetings:
+        lines.append(f"AG: {len(card.alternate_greetings)}")
+    if card.lorebook_entries:
+        lines.append(f"LB: {len(card.lorebook_entries)}")
+    if full and card.system_prompt:
+        lines.append(f"SYS: {_truncate(_clean(card.system_prompt), cap)}")
+    lines.append("")
+    return lines
+
+
 def to_compact(cards: Iterable[Card], *, full: bool = False, max_chars: int | None = _DEFAULT_MAX_CHARS) -> str:
     cards = list(cards)
     cap = None if full else max_chars
@@ -137,30 +174,7 @@ def to_compact(cards: Iterable[Card], *, full: bool = False, max_chars: int | No
         "",
     ]
     for i, card in enumerate(cards, 1):
-        lines.append(f"=== CARD {i}/{len(cards)} ===")
-        title = card.name or card.nickname or "(unnamed)"
-        lines.append(f"N: {title}")
-        if card.tags:
-            lines.append(f"T: {', '.join(card.tags)}")
-        if card.description:
-            lines.append(f"D: {_truncate(_clean(card.description), cap)}")
-        if card.personality:
-            lines.append(f"P: {_truncate(_clean(card.personality), cap)}")
-        if card.scenario:
-            lines.append(f"S: {_truncate(_clean(card.scenario), cap)}")
-        if card.first_mes:
-            lines.append(f"G: {_truncate(_clean(card.first_mes), cap)}")
-        if card.mes_example:
-            lines.append(f"EX: {_truncate(_clean(card.mes_example), cap)}")
-        if card.creator_notes:
-            lines.append(f"CN: {_truncate(_clean(card.creator_notes), cap)}")
-        if card.alternate_greetings:
-            lines.append(f"AG: {len(card.alternate_greetings)}")
-        if card.lorebook_entries:
-            lines.append(f"LB: {len(card.lorebook_entries)}")
-        if full and card.system_prompt:
-            lines.append(f"SYS: {_truncate(_clean(card.system_prompt), cap)}")
-        lines.append("")
+        lines.extend(_compact_card_lines(i, len(cards), card, cap, full=full))
     body = "\n".join(lines).rstrip() + "\n"
     return body + f"\n# ~{estimate_tokens(body)} tokens (rough estimate)\n"
 
@@ -208,3 +222,29 @@ WRITERS = {
     "compact": to_compact,
     "json": to_json,
 }
+
+
+def estimate_export(
+    cards: list[Card], *, format: str, full: bool = False, max_chars: int | None = _DEFAULT_MAX_CHARS
+) -> dict:
+    """Token estimate for the whole export plus each card's own marginal
+    contribution (the size of just its section, not shared preamble/stats),
+    so a UI can show "this card costs ~N tokens" and let someone drop the
+    expensive/low-value ones before exporting."""
+    if format not in WRITERS:
+        raise ValueError(f"unknown format {format!r}")
+
+    total_text = WRITERS[format](cards, full=full, max_chars=max_chars)
+    cap = None if full else max_chars
+
+    per_card = []
+    for i, card in enumerate(cards, 1):
+        if format == "compact":
+            block = "\n".join(_compact_card_lines(i, len(cards), card, cap, full=full))
+        elif format == "md":
+            block = "\n".join(_markdown_card_lines(i, len(cards), card, cap, full=full))
+        else:  # json
+            block = json.dumps(card_to_dict(card, full=full), ensure_ascii=False)
+        per_card.append({"index": i, "name": card.name or card.nickname or "(unnamed)", "tokens": estimate_tokens(block)})
+
+    return {"total_tokens": estimate_tokens(total_text), "cards": per_card}

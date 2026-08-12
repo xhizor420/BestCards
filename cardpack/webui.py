@@ -28,7 +28,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from .cardspec import Card, CardExtractionError, parse_card_payload
-from .formats import WRITERS, card_to_dict
+from .formats import WRITERS, card_to_dict, estimate_export
 from .png_chunks import NotAPngError, read_text_chunks
 
 STATIC_DIR = (Path(__file__).parent / "webui_static").resolve()
@@ -84,6 +84,8 @@ class Handler(BaseHTTPRequestHandler):
             self._handle_extract(parsed, body)
         elif parsed.path == "/api/export":
             self._handle_export(body)
+        elif parsed.path == "/api/estimate":
+            self._handle_estimate(body)
         else:
             self.send_error(404)
 
@@ -122,6 +124,20 @@ class Handler(BaseHTTPRequestHandler):
             content = WRITERS[fmt](cards, full=full, max_chars=max_chars)
             filename = f"cards_export.{_EXTENSIONS[fmt]}"
             self._send_json(200, {"filename": filename, "content": content})
+        except Exception as e:  # noqa: BLE001
+            self._send_json(400, {"error": str(e)})
+
+    def _handle_estimate(self, body: bytes) -> None:
+        try:
+            payload = json.loads(body.decode("utf-8"))
+            fmt = payload.get("format", "md")
+            if fmt not in WRITERS:
+                self._send_json(400, {"error": f"unknown format {fmt!r}"})
+                return
+            full = bool(payload.get("full", False))
+            max_chars = payload.get("max_chars", 600)
+            cards = [Card.from_dict(d) for d in payload.get("cards", [])]
+            self._send_json(200, estimate_export(cards, format=fmt, full=full, max_chars=max_chars))
         except Exception as e:  # noqa: BLE001
             self._send_json(400, {"error": str(e)})
 
