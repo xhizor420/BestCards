@@ -58,16 +58,43 @@
       </label>
       <label class="checkbox-label">
         <input type="checkbox" id="fullCheckbox">
-        Include everything (full example dialogue, all alt greetings, full lorebook)
+        No truncation (show full text for everything included below, incl. full alt greetings / lorebook)
       </label>
       <label id="maxCharsLabel">Per-field cap (chars)
         <input type="number" id="maxCharsInput" value="600" min="50" step="50">
       </label>
     </div>
 
+    <fieldset class="fields-panel">
+      <legend>Optional fields (name, description, personality, scenario, first_mes, mes_example are always included)</legend>
+      <label class="checkbox-label field-toggle">
+        <input type="checkbox" class="field-checkbox" value="tags" checked>
+        Tags
+      </label>
+      <label class="checkbox-label field-toggle">
+        <input type="checkbox" class="field-checkbox" value="creator_notes">
+        Creator notes
+      </label>
+      <label class="checkbox-label field-toggle">
+        <input type="checkbox" class="field-checkbox" value="alt_greetings">
+        Alt greetings
+      </label>
+      <label class="checkbox-label field-toggle">
+        <input type="checkbox" class="field-checkbox" value="lorebook">
+        Lorebook
+      </label>
+      <label class="checkbox-label field-toggle">
+        <input type="checkbox" class="field-checkbox" value="system_prompt">
+        System prompt
+      </label>
+      <label class="checkbox-label field-toggle">
+        <input type="checkbox" class="field-checkbox" value="post_history_instructions">
+        Post-history instructions
+      </label>
+    </fieldset>
+
     <div class="token-total">
-      <span id="totalTokens">~0</span> tokens total
-      <span class="token-total-hint">(rough estimate for the export as configured below)</span>
+      <span id="totalTokens">0</span> <span id="tokenMethod" class="token-method"></span> tokens total
     </div>
 
     <div id="cardGrid" class="card-grid"></div>

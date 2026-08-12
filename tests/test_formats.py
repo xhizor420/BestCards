@@ -1,6 +1,7 @@
 from cardpack.cardspec import parse_card_payload
-from cardpack.formats import estimate_export, to_compact, to_json, to_markdown
+from cardpack.formats import estimate_export, normalize_extra_fields, to_compact, to_json, to_markdown
 from cardpack.png_chunks import read_text_chunks
+from cardpack.stats import count_tokens
 from tests.conftest import b64_json, build_png, card_v2_payload
 
 
@@ -72,3 +73,54 @@ def test_estimate_export_rejects_unknown_format():
         assert False, "expected ValueError"
     except ValueError:
         pass
+
+
+def test_creator_notes_excluded_by_default_in_every_format():
+    card = _sample_card(creator_notes="Loved for its banter and slow burn.")
+    for writer in (to_markdown, to_compact):
+        out = writer([card])
+        assert "banter" not in out
+    out = to_json([card], full=True)
+    assert "banter" not in out
+    assert "creator_notes" not in out
+
+
+def test_creator_notes_included_when_field_requested():
+    card = _sample_card(creator_notes="Loved for its banter and slow burn.")
+    for writer in (to_markdown, to_compact):
+        out = writer([card], extra_fields={"tags", "creator_notes"})
+        assert "banter" in out
+    out = to_json([card], full=True, extra_fields={"creator_notes"})
+    assert "banter" in out
+
+
+def test_tags_included_by_default_but_removable():
+    card = _sample_card(tags=["fantasy", "adventure"])
+    assert "fantasy" in to_compact([card])
+    assert "fantasy" not in to_compact([card], extra_fields="none")
+
+
+def test_normalize_extra_fields_handles_all_none_and_junk():
+    assert normalize_extra_fields("all") == {
+        "tags",
+        "creator_notes",
+        "system_prompt",
+        "post_history_instructions",
+        "alt_greetings",
+        "lorebook",
+    }
+    assert normalize_extra_fields("none") == frozenset()
+    assert normalize_extra_fields("") == frozenset()
+    assert normalize_extra_fields("tags, bogus_field") == {"tags"}
+    assert normalize_extra_fields(["tags", "creator_notes"]) == {"tags", "creator_notes"}
+
+
+def test_count_tokens_labels_method_and_falls_back_without_tiktoken():
+    tc = count_tokens("Hello world, this is a short test sentence.")
+    assert tc.count > 0
+    assert tc.method  # always labeled, never silent about which method produced it
+    # In this sandboxed test environment tiktoken's data file can't be
+    # fetched, so we should reliably be on the heuristic fallback here -
+    # this also guards against the heuristic path silently breaking.
+    if not tc.exact:
+        assert "heuristic" in tc.method

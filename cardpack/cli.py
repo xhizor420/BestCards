@@ -5,8 +5,9 @@ import sys
 from pathlib import Path
 
 from .cardspec import Card, CardExtractionError, parse_card_payload
-from .formats import WRITERS
+from .formats import ALL_EXTRA_FIELDS, DEFAULT_EXTRA_FIELDS, WRITERS, normalize_extra_fields
 from .png_chunks import NotAPngError, read_text_chunks_from_file
+from .stats import count_tokens
 
 
 def _gather_png_paths(inputs: list[str], recursive: bool) -> list[Path]:
@@ -65,14 +66,25 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--full",
         action="store_true",
-        help="Include full text for long fields (example dialogue, all alt greetings, full "
-        "lorebook) instead of the trimmed digest. Produces a much larger file.",
+        help="Don't truncate included prose fields, and show full text for included list "
+        "fields (alt_greetings, lorebook) instead of just a count. Independent of --fields "
+        "below - it controls how much of what's included is shown, not what's included.",
     )
     parser.add_argument(
         "--max-chars",
         type=int,
         default=600,
         help="Per-field character cap when not using --full (default: 600).",
+    )
+    parser.add_argument(
+        "--fields",
+        default=",".join(sorted(DEFAULT_EXTRA_FIELDS)),
+        metavar="LIST",
+        help="Comma-separated optional fields to include beyond the always-present core six "
+        f"(name, description, personality, scenario, first_mes, mes_example): "
+        f"{','.join(ALL_EXTRA_FIELDS)}. Also accepts 'all' or 'none'. Default: 'tags'. "
+        "(creator_notes and the others cost tokens with no content-pattern payoff unless you "
+        "specifically want them - opt in here.)",
     )
     parser.add_argument(
         "--no-recursive",
@@ -118,8 +130,9 @@ def main(argv: list[str] | None = None) -> int:
     else:
         cards.sort(key=lambda c: c.source_file)
 
+    extra_fields = normalize_extra_fields(args.fields)
     writer = WRITERS[args.format]
-    output_text = writer(cards, full=args.full, max_chars=args.max_chars)
+    output_text = writer(cards, full=args.full, max_chars=args.max_chars, extra_fields=extra_fields)
     Path(args.output).write_text(output_text, encoding="utf-8")
 
     spec_counts: dict[str, int] = {}
@@ -127,11 +140,16 @@ def main(argv: list[str] | None = None) -> int:
         spec_counts[c.spec_version] = spec_counts.get(c.spec_version, 0) + 1
     spec_summary = ", ".join(f"v{v}: {n}" for v, n in sorted(spec_counts.items()))
 
+    tc = count_tokens(output_text)
+
     print(f"Scanned {len(png_paths)} PNG file(s).")
     print(f"Extracted {len(cards)} card(s) ({spec_summary}).")
     if failures:
         print(f"Skipped {len(failures)} file(s) with no usable card data.")
     print(f"Wrote {args.format} export to {args.output}")
+    print(f"{tc.count:,} tokens ({tc.method})")
+    if not tc.exact:
+        print("  (install tiktoken for an exact GPT-4/3.5-style count: pip install tiktoken)")
 
     if args.report_failures and failures:
         report_lines = [f"{path}: {reason}" for path, reason in failures]

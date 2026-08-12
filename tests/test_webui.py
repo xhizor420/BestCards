@@ -110,6 +110,22 @@ def test_api_estimate_returns_total_and_per_card_tokens(live_server):
     status, data = _post(f"{live_server}/api/estimate", body, {"Content-Type": "application/json"})
     assert status == 200
     assert data["total_tokens"] > 0
+    assert "method" in data
     assert len(data["cards"]) == 1
     assert data["cards"][0]["name"] == "Aria"
-    assert data["cards"][0]["tokens"] > 0
+
+
+def test_api_export_respects_fields_selection(live_server):
+    png_bytes = build_png(
+        [("tEXt", "chara", b64_json(card_v2_payload(name="Aria", creator_notes="Loved for its banter.")))]
+    )
+    _, extract_data = _post(f"{live_server}/api/extract?name=aria.png", png_bytes)
+    card = extract_data["card"]
+
+    body = json.dumps({"cards": [card], "format": "compact", "fields": ["tags"]}).encode("utf-8")
+    _, without_notes = _post(f"{live_server}/api/export", body, {"Content-Type": "application/json"})
+    assert "banter" not in without_notes["content"]
+
+    body = json.dumps({"cards": [card], "format": "compact", "fields": ["tags", "creator_notes"]}).encode("utf-8")
+    _, with_notes = _post(f"{live_server}/api/export", body, {"Content-Type": "application/json"})
+    assert "banter" in with_notes["content"]

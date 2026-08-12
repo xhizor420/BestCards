@@ -22,7 +22,9 @@ const sortSelect = document.getElementById("sortSelect");
 const fullCheckbox = document.getElementById("fullCheckbox");
 const maxCharsLabel = document.getElementById("maxCharsLabel");
 const maxCharsInput = document.getElementById("maxCharsInput");
+const fieldCheckboxes = Array.from(document.querySelectorAll(".field-checkbox"));
 const totalTokensEl = document.getElementById("totalTokens");
+const tokenMethodEl = document.getElementById("tokenMethod");
 const cardGrid = document.getElementById("cardGrid");
 const exportBtn = document.getElementById("exportBtn");
 const exportResult = document.getElementById("exportResult");
@@ -204,12 +206,19 @@ function currentExportOptions() {
     sort: sortSelect.value,
     full: fullCheckbox.checked,
     max_chars: parseInt(maxCharsInput.value, 10) || 600,
+    fields: fieldCheckboxes.filter((cb) => cb.checked).map((cb) => cb.value),
   };
+}
+
+function shortMethodLabel(method) {
+  if (!method) return "";
+  return method.startsWith("tiktoken") ? "(exact, tiktoken)" : "(estimate)";
 }
 
 async function refreshEstimate() {
   if (!entries.length) {
-    totalTokensEl.textContent = "~0";
+    totalTokensEl.textContent = "0";
+    tokenMethodEl.textContent = "";
     return;
   }
   const requestId = ++estimateRequestId;
@@ -223,15 +232,18 @@ async function refreshEstimate() {
     if (requestId !== estimateRequestId) return; // a newer request superseded this one
     if (!res.ok) throw new Error(data.error || `server error ${res.status}`);
 
-    totalTokensEl.textContent = `~${data.total_tokens.toLocaleString()}`;
+    totalTokensEl.textContent = data.total_tokens.toLocaleString();
+    tokenMethodEl.textContent = shortMethodLabel(data.method);
+    tokenMethodEl.title = data.method;
     const tiles = cardGrid.querySelectorAll(".card-tile");
     data.cards.forEach((c, i) => {
       const badge = tiles[i] && tiles[i].querySelector('[data-role="tokens"]');
-      if (badge) badge.textContent = `~${c.tokens.toLocaleString()} tok`;
+      if (badge) badge.textContent = `${c.tokens.toLocaleString()} tok`;
     });
   } catch (err) {
     if (requestId === estimateRequestId) {
       totalTokensEl.textContent = "?";
+      tokenMethodEl.textContent = "";
     }
   }
 }
@@ -322,6 +334,7 @@ fullCheckbox.addEventListener("change", () => {
 formatSelect.addEventListener("change", refreshEstimate);
 sortSelect.addEventListener("change", refreshEstimate);
 maxCharsInput.addEventListener("input", debouncedEstimate);
+fieldCheckboxes.forEach((cb) => cb.addEventListener("change", refreshEstimate));
 updateMaxCharsVisibility();
 
 // --- export ----------------------------------------------------------------
@@ -365,7 +378,8 @@ resetBtn.addEventListener("click", () => {
   extractionFailures = [];
   renderSummary();
   renderCardGrid();
-  totalTokensEl.textContent = "~0";
+  totalTokensEl.textContent = "0";
+  tokenMethodEl.textContent = "";
   exportResult.textContent = "";
   setProgressVisible(false);
 });

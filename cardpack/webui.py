@@ -8,8 +8,12 @@ serves a single-page app and two JSON endpoints:
 
   POST /api/export                    body = JSON
       {"cards": [...], "format": "md"|"compact"|"json", "full": bool,
-       "max_chars": int, "sort": "name"|"file"}
+       "max_chars": int, "sort": "name"|"file", "fields": ["tags", ...]}
       -> {"filename": "...", "content": "..."}
+
+  POST /api/estimate                  body = JSON (same shape as /api/export
+      minus "sort") -> {"total_tokens": int, "method": "...",
+                         "cards": [{"index", "name", "tokens"}, ...]}
 
 The browser does the fan-out: it uploads PNGs to /api/extract with a small
 concurrency pool, updates a progress counter as each response lands, then
@@ -114,6 +118,7 @@ class Handler(BaseHTTPRequestHandler):
             full = bool(payload.get("full", False))
             max_chars = payload.get("max_chars", 600)
             sort_key = payload.get("sort", "name")
+            fields = payload.get("fields", ["tags"])
 
             cards = [Card.from_dict(d) for d in payload.get("cards", [])]
             if sort_key == "name":
@@ -121,7 +126,7 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 cards.sort(key=lambda c: c.source_file)
 
-            content = WRITERS[fmt](cards, full=full, max_chars=max_chars)
+            content = WRITERS[fmt](cards, full=full, max_chars=max_chars, extra_fields=fields)
             filename = f"cards_export.{_EXTENSIONS[fmt]}"
             self._send_json(200, {"filename": filename, "content": content})
         except Exception as e:  # noqa: BLE001
@@ -136,8 +141,9 @@ class Handler(BaseHTTPRequestHandler):
                 return
             full = bool(payload.get("full", False))
             max_chars = payload.get("max_chars", 600)
+            fields = payload.get("fields", ["tags"])
             cards = [Card.from_dict(d) for d in payload.get("cards", [])]
-            self._send_json(200, estimate_export(cards, format=fmt, full=full, max_chars=max_chars))
+            self._send_json(200, estimate_export(cards, format=fmt, full=full, max_chars=max_chars, extra_fields=fields))
         except Exception as e:  # noqa: BLE001
             self._send_json(400, {"error": str(e)})
 

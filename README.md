@@ -37,18 +37,32 @@ new character."
 
 Six fields are always present for every card (truncated per `--max-chars`,
 never dropped, unless `--full`): **name, description, personality,
-scenario, first_mes, mes_example**. `tags` and `creator_notes` are also
-included by default — tags are the closest thing to a genre/archetype
-label, and creator notes are often where a creator explains what a card is
-for, which is exactly the "why do people use this" signal a reference
-corpus needs. Everything else (system prompt, post-history instructions,
-full alternate greetings, full lorebook text) is more runtime
-configuration than content signal, so by default it's summarized to a
-count and only spelled out with `--full`.
+scenario, first_mes, mes_example**. Everything else is opt-in and off by
+default except `tags` (see `--fields` below) — each one costs real tokens
+for content that's often not needed, so you choose what's worth it rather
+than the tool deciding for you. `--full` is a separate, independent knob:
+it only controls whether *included* fields are truncated, not which
+fields appear.
 
-Attribution (who made the card, `creator`) is intentionally left out of
-every export — it's not a content pattern a model can learn from, just
-token cost with no analytical payoff for this use case.
+Attribution (who made the card, `creator`) is left out of every export
+entirely, with no toggle to bring it back — it's not a content pattern a
+model can learn from, just token cost with no analytical payoff for this
+use case.
+
+### Token counting
+
+Every export ends with a token count and, honestly, a label saying how it
+was computed — there's no single universal tokenizer (GPT, Claude, Llama,
+etc. all split text differently), so nothing here claims false precision:
+
+- If [`tiktoken`](https://github.com/openai/tiktoken) is installed
+  (`pip install tiktoken`) and can reach its one-time encoding-data
+  download, counts are **exact** for GPT-4/3.5's tokenizer (`cl100k_base`)
+  and a close proxy for most other modern BPE tokenizers, including
+  Claude's. Output is labeled `tiktoken/cl100k_base`.
+- Otherwise it falls back to a word-aware heuristic (~0.75 tokens/word,
+  better than a flat chars/4), labeled `heuristic` so you always know
+  which one produced the number in front of you.
 
 ## Requirements
 
@@ -67,17 +81,21 @@ Drag a folder (or a pile of PNGs) onto the page, or use "Choose PNG files" /
 batch have been processed so far.
 
 Once extraction finishes you get a grid of every card — thumbnail, name,
-and its own token cost (`~113 tok`) — plus a running **total tokens**
-counter above it. Change format / `--full` / per-field cap and the counter
-and every per-card badge re-estimate live, so you can see exactly what a
-setting costs before exporting. Click the **×** on any tile to drop that
-card from the export entirely (it's removed from the total instantly, and
-won't be in the downloaded file) — useful for trimming a batch down to
-your actual token budget without re-uploading. Pick a format (Markdown /
-compact / JSON) and click **Generate & download export** to save the
-combined file. This is the same extraction and export logic as the CLI
-below, just with drag-and-drop and live per-card visibility instead of
-flags.
+and its own token cost (`113 tok`) — plus a running **total tokens**
+counter above it, labeled `(exact, tiktoken)` or `(estimate)` depending on
+whether `tiktoken` is installed on the machine running the server. Checkboxes
+let you pick exactly which optional fields go into the export (tags,
+creator notes, alt greetings, lorebook, system prompt, post-history
+instructions — the six core fields are always included); toggling any of
+them, changing format, or changing `--full`/the per-field cap re-estimates
+the total and every per-card badge live, so you see the cost of each choice
+before exporting. Click the **×** on any tile to drop that card from the
+export entirely (it's removed from the total instantly, and won't be in
+the downloaded file) — useful for trimming a batch down to your actual
+token budget without re-uploading. Pick a format (Markdown / compact /
+JSON) and click **Generate & download export** to save the combined file.
+This is the same extraction and export logic as the CLI below, just with
+drag-and-drop and live per-card/per-field visibility instead of flags.
 
 Options: `python3 ui.py --port 9000`, `--no-browser` to skip auto-opening a
 tab, `--host 0.0.0.0` to allow other devices on your LAN to reach it (only
@@ -92,8 +110,11 @@ python3 bestcards.py ./my_cards -o cards_export.md
 # Minimal-token plain text, good for pasting into a chat with a big batch
 python3 bestcards.py ./my_cards -o cards_export.txt --format compact
 
-# Full fidelity JSON (all alt greetings, full lorebook, untruncated text)
-python3 bestcards.py ./my_cards -o cards_export.json --format json --full
+# Full fidelity JSON, every optional field, untruncated text
+python3 bestcards.py ./my_cards -o cards_export.json --format json --full --fields all
+
+# Bring creator notes back in alongside tags (both off-by-default fields are opt-in)
+python3 bestcards.py ./my_cards -o cards_export.md --fields tags,creator_notes
 
 # Mix explicit files and folders
 python3 bestcards.py card1.png card2.png ./more_cards/
@@ -115,7 +136,8 @@ bestcards ./my_cards -o cards_export.md
 | --- | --- |
 | `-o, --output` | Output file path (default `cards_export.md`) |
 | `-f, --format` | `md` \| `compact` \| `json` |
-| `--full` | Include full example dialogue, all alt greetings, full lorebook (otherwise trimmed to `--max-chars` per field) |
+| `--fields LIST` | Comma-separated optional fields to include: `tags`, `creator_notes`, `system_prompt`, `post_history_instructions`, `alt_greetings`, `lorebook`. Also accepts `all` or `none`. Default: `tags`. (The six core fields are always included and aren't part of this list.) |
+| `--full` | Don't truncate included prose, and show full text for included list fields (alt_greetings, lorebook) instead of just a count. Independent of `--fields` — controls *how much* of what's included is shown, not *what's* included |
 | `--max-chars` | Per-field truncation cap in non-`--full` mode (default 600) |
 | `--no-recursive` | Only scan the top level of given folders |
 | `--sort` | Order cards by `name` (default) or `file` |
@@ -135,10 +157,10 @@ bestcards ./my_cards -o cards_export.md
 - Cards with no recognizable payload are skipped and reported, not fatal to
   the batch.
 - Every export starts with a corpus-stats block (card count, spec-version
-  mix, top tags, average description length) and ends with a
-  rough token-count estimate, so before you paste hundreds of cards into a
-  model you know roughly what you're about to spend and what the batch
-  looks like at a glance.
+  mix, top tags if included, average description length) and ends with a
+  labeled token count (see "Token counting" above), so before you paste
+  hundreds of cards into a model you know what you're about to spend and
+  what the batch looks like at a glance.
 
 ## Development
 
@@ -146,3 +168,6 @@ bestcards ./my_cards -o cards_export.md
 pip install -e ".[dev]"
 pytest
 ```
+
+Optional: `pip install -e ".[tokens]"` (or just `pip install tiktoken`) to
+get exact token counts instead of the heuristic fallback.

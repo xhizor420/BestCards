@@ -176,6 +176,32 @@ button {
 
 .export-result { color: var(--text-muted); font-size: 0.9rem; min-height: 1.3em; }
 
+.fields-panel {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.5rem 0.9rem 0.75rem;
+  margin: 0 0 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.1rem;
+}
+
+.fields-panel legend {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  padding: 0 0.3rem;
+}
+
+.field-toggle {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 0.4rem !important;
+  font-size: 0.88rem;
+  color: var(--text);
+}
+
+.field-toggle input { width: 1rem; height: 1rem; }
+
 .token-total {
   display: flex;
   align-items: baseline;
@@ -190,7 +216,7 @@ button {
 }
 
 #totalTokens { color: var(--accent); }
-.token-total-hint { font-size: 0.8rem; font-weight: 400; color: var(--text-muted); }
+.token-method { font-size: 0.8rem; font-weight: 400; color: var(--text-muted); }
 
 .card-grid {
   display: grid;
