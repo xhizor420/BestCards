@@ -217,8 +217,9 @@ def format_stats_block(stats: dict, *, compact: bool = False) -> str:
     if stats["max_description_chars"]:
         lines.append(
             f"- Description length: {stats['min_description_chars']}–{stats['max_description_chars']} chars "
-            f"(avg {stats['avg_description_chars']}) — real variety, not noise; see the note above about not "
-            f"averaging toward the middle of that range."
+            f"(avg {stats['avg_description_chars']}) — this range tracks complexity (e.g. a single-character "
+            f"card vs. one built around several characters), not quality, and is not a target either way; see "
+            f"the note above."
         )
     if stats["cards_missing_description"]:
         lines.append(f"- Cards with no description: {stats['cards_missing_description']}")

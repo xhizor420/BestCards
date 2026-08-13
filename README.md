@@ -82,9 +82,18 @@ are curated, high-quality references — not a random or average sample —
 and explicitly tells the model not to average them into a composite, but to
 notice what makes individual cards effective and match that bar with
 something original. The stats block backs this up with the actual spread
-(`Description length: 44–2,400 chars (avg 620) — real variety, not noise`)
-instead of just a flat average, since a flat average is exactly the kind of
-number that invites "aim for the middle" thinking.
+(`Description length: 44–2,400 chars (avg 620)`) instead of just a flat
+average, since a flat average is exactly the kind of number that invites
+"aim for the middle" thinking.
+
+That spread is also explicitly framed as tracking *complexity*, not
+quality or a target — a card built around one simple character can
+legitimately run a couple thousand tokens while one built around several
+characters or an intricate scenario runs well past that, and neither is
+"more correct." The file tells the model outright not to treat any length
+here (including that range) as something to hit, and to instead let its
+own character concept's actual complexity decide how long it needs to be
+— the goal is not constraining creativity to match a norm from the corpus.
 
 ### Token counting
 

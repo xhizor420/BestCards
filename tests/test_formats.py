@@ -165,3 +165,23 @@ def test_preamble_warns_against_averaging_into_a_composite():
         low = out.lower()
         assert "do not average" in low or "not average" in low
         assert "curated" in low or "high-quality" in low
+
+
+def test_preamble_says_length_tracks_complexity_not_a_target():
+    # Complexity (a single character vs. several) legitimately varies a
+    # card's natural length - the file must say so explicitly and must
+    # NOT tell the model to hit any particular length, so a genuinely
+    # complex new character isn't squeezed to match the corpus.
+    card = _sample_card()
+    for out in (to_markdown([card]), to_compact([card]), to_json([card])):
+        low = out.lower()
+        assert "complexity" in low
+        assert "not a target" in low or "as a target" in low
+        assert "several characters" in low or "multi-character" in low
+
+
+def test_description_length_stats_line_ties_range_to_complexity():
+    cards = [_sample_card(name="Simple", description="short"), _sample_card(name="Complex", description="x" * 3000)]
+    out = to_markdown(cards)
+    assert "complexity" in out.lower()
+    assert "not a target" in out.lower()
