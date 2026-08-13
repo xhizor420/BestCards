@@ -57,6 +57,14 @@ right where it matters most in the prompt, fixes both: you get a character
 back in the same six fields the whole corpus is built from, ready to turn
 into an actual new card, not just a description of one.
 
+The template also says explicitly to give the character back as **one
+clean block with no commentary mixed into or around the fields**, so the
+response is directly copy-paste-able rather than the fields being buried
+in paragraphs of explanation — and to close by briefly **asking if any
+changes are wanted**, then on a revision request, **re-sending the whole
+card again** (every field, not just the one that changed) so it stays
+copy-paste-ready through as many rounds of edits as you want.
+
 Six fields are always present for every card (truncated per `--max-chars`,
 never dropped, unless `--full`): **name, description, personality,
 scenario, first_mes, mes_example**. Everything else is opt-in and off by

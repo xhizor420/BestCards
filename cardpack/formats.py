@@ -90,16 +90,25 @@ _CORPUS_PREAMBLE = (
 # i/N ===" wrapper this file uses to hold many cards) - and reminds it,
 # right where it matters, to fill that shape in using what it just read,
 # not fixed text.
+#
+# Two more things had to be spelled out, not just implied by the template
+# existing: that the six fields should come back as ONE uninterrupted
+# block (not prose with the fields scattered through it, and not the
+# fields buried after paragraphs of commentary) so it's actually
+# copy-paste-able as a finished card, and that a revision round should
+# re-send the WHOLE card, not just the field that changed - otherwise
+# every edit breaks the copy-paste-able property right back.
 _RESPONSE_TEMPLATE_MD = """## When you respond
 
-Structure the new character using exactly this template, one field per line -
-do not include "## Card i/N" headers, corpus stats, or any of this file's
-multi-card wrapper; that's for holding many reference cards, not your one
-new character. These are the same six fields every card above has - use
-them, but fill in your own content: write each field the way the strongest
-cards above wrote theirs (their level of detail, tone, and structural
-conventions), based on the idea you were given, not copied from any single
-card.
+Give back the character as ONE clean block using exactly this template -
+no commentary, preamble, or explanation mixed into or around the fields -
+so it can be copied and pasted as-is. Do not include "## Card i/N"
+headers, corpus stats, or any of this file's multi-card wrapper; that's
+for holding many reference cards, not your one new character. These are
+the same six fields every card above has - fill in your own content,
+written the way the strongest cards above wrote theirs (their level of
+detail, tone, and structural conventions), based on the idea you were
+given, not copied from any single card.
 
 Name: <character name>
 Description: <appearance, background, key facts>
@@ -107,17 +116,26 @@ Personality: <personality traits, quirks, how they typically act>
 Scenario: <the setting or situation this character exists in>
 First Message: <the opening message this character sends to start a chat>
 Example Dialogue: <a short sample exchange demonstrating this character's voice>
+
+After the block, briefly ask if any changes are wanted. If changes are
+requested, give back the FULL card again in that same clean block form -
+every field, not just the one that changed - so it stays copy-paste-ready
+after every revision.
 """
 
 _RESPONSE_TEMPLATE_COMPACT = (
-    "When you respond: structure the new character using exactly these six "
-    "fields, one per line, in this order - Name / Description / Personality "
-    "/ Scenario / First Message / Example Dialogue. Do not include "
-    '"=== CARD i/N ===" markers or a stats line - that wrapper is for '
-    "holding many reference cards, not your one new character. Same fields "
-    "every card above used; fill in your own content, written the way the "
-    "strongest cards above wrote theirs, based on the idea you were given, "
-    "not copied from any single card."
+    "When you respond: give back the character as ONE clean block using "
+    "exactly these six fields, one per line, in this order - Name / "
+    "Description / Personality / Scenario / First Message / Example "
+    "Dialogue - with no commentary mixed into or around the fields, so it "
+    'can be copied and pasted as-is. Do not include "=== CARD i/N ===" '
+    "markers or a stats line - that wrapper is for holding many reference "
+    "cards, not your one new character. Fill in your own content, written "
+    "the way the strongest cards above wrote theirs, based on the idea "
+    "you were given, not copied from any single card. After the block, "
+    "briefly ask if any changes are wanted; if changes are requested, "
+    "give back the FULL card again in that same clean block form - every "
+    "field, not just the one that changed."
 )
 
 
@@ -345,11 +363,15 @@ def to_json(
         # before responding - see _RESPONSE_TEMPLATE_MD's comment above.
         "response_template": {
             "instruction": (
-                "When you respond, structure the new character using exactly these "
-                "fields - the same six every card above has. Fill in your own "
-                "content, written the way the strongest cards above wrote theirs "
-                "(their level of detail, tone, structural conventions), based on "
-                "the idea you were given, not copied from any single card."
+                "When you respond, give back the character as ONE clean block using "
+                "exactly these fields - the same six every card above has - with no "
+                "commentary mixed into or around them, so it can be copied and pasted "
+                "as-is. Fill in your own content, written the way the strongest cards "
+                "above wrote theirs (their level of detail, tone, structural "
+                "conventions), based on the idea you were given, not copied from any "
+                "single card. After the block, briefly ask if any changes are wanted; "
+                "if changes are requested, give back the FULL card again in that same "
+                "clean block form - every field, not just the one that changed."
             ),
             "fields": ["name", "description", "personality", "scenario", "first_mes", "mes_example"],
         },
