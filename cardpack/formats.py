@@ -44,6 +44,7 @@ import os
 from typing import Iterable
 
 from .cardspec import Card
+from .conventions import analyze_conventions, build_convention_lines, build_example_dialogue_sample
 from .stats import DEFAULT_TOKENIZER, build_corpus_stats, count_tokens, format_stats_block
 
 # Fields whose text can be huge relative to how useful they are for
@@ -98,45 +99,109 @@ _CORPUS_PREAMBLE = (
 # copy-paste-able as a finished card, and that a revision round should
 # re-send the WHOLE card, not just the field that changed - otherwise
 # every edit breaks the copy-paste-able property right back.
-_RESPONSE_TEMPLATE_MD = """## When you respond
+#
+# Finally, the template is built PER CORPUS rather than being a fixed
+# string, because "write it the way the cards above did" was still
+# producing malformed output - worst of all in Example Dialogue, whose
+# real shape (a <START> line, {{user}}:/{{char}}: turn prefixes, asterisk
+# actions) is a *convention* a model won't reliably infer from a prose
+# description of what the field is for. conventions.py measures what this
+# particular corpus actually does, and that gets stated here as explicit
+# rules with real percentages, plus a correctly-formatted sample - so the
+# template shows the shape instead of describing it.
 
-Give back the character as ONE clean block using exactly this template -
-no commentary, preamble, or explanation mixed into or around the fields -
-so it can be copied and pasted as-is. Do not include "## Card i/N"
-headers, corpus stats, or any of this file's multi-card wrapper; that's
-for holding many reference cards, not your one new character. These are
-the same six fields every card above has - fill in your own content,
-written the way the strongest cards above wrote theirs (their level of
-detail, tone, and structural conventions), based on the idea you were
-given, not copied from any single card.
+
+def _build_response_template_md(cards: list[Card]) -> str:
+    conv = analyze_conventions(cards)
+    convention_lines = build_convention_lines(conv)
+    # Shown flush-left, exactly as the real cards write it - indenting it
+    # to "nest" under the field label would teach an indentation the
+    # corpus doesn't actually use.
+    example_block = build_example_dialogue_sample(conv)
+
+    house_style = ""
+    if convention_lines:
+        house_style = (
+            "\n### House style of these cards — follow it\n\n"
+            "These are measured from the cards above, not general advice. Match them:\n\n"
+            + "\n".join(convention_lines)
+            + "\n"
+        )
+
+    return f"""## ▼ REQUIRED RESPONSE FORMAT — follow this exactly ▼
+
+Output the new character as ONE clean block, in exactly the field order
+below, with each field's label written out and a blank line between
+fields. No commentary, preamble, notes, or explanation before, between,
+or after the fields — the block must be copy-paste-able as a finished
+card. Do not include "## Card i/N" headers, corpus stats, or any other
+part of this file's multi-card wrapper; that wrapper holds many reference
+cards, it is not part of a single card.
+
+Every one of the six fields is required. Do not skip, rename, merge, or
+reorder them, and do not leave any as a one-line placeholder — Example
+Dialogue in particular must be a real, fully written exchange in the
+format shown below, not a description of one.
+{house_style}
+### The exact format to output
 
 Name: <character name>
-Description: <appearance, background, key facts>
-Personality: <personality traits, quirks, how they typically act>
-Scenario: <the setting or situation this character exists in>
-First Message: <the opening message this character sends to start a chat>
-Example Dialogue: <a short sample exchange demonstrating this character's voice>
 
-After the block, briefly ask if any changes are wanted. If changes are
-requested, give back the FULL card again in that same clean block form -
-every field, not just the one that changed - so it stays copy-paste-ready
-after every revision.
+Description: <appearance, background, key facts>
+
+Personality: <personality traits, quirks, how they typically act>
+
+Scenario: <the setting or situation this character exists in>
+
+First Message: <the character's opening message that starts the chat>
+
+Example Dialogue:
+{example_block}
+
+### After the block
+
+Write the whole block first, then on a new line after it, briefly ask
+whether any changes are wanted. If changes are requested, output the FULL
+card again in this same format — every field, not just the changed one —
+so it stays copy-paste-ready after every revision.
 """
 
-_RESPONSE_TEMPLATE_COMPACT = (
-    "When you respond: give back the character as ONE clean block using "
-    "exactly these six fields, one per line, in this order - Name / "
-    "Description / Personality / Scenario / First Message / Example "
-    "Dialogue - with no commentary mixed into or around the fields, so it "
-    'can be copied and pasted as-is. Do not include "=== CARD i/N ===" '
-    "markers or a stats line - that wrapper is for holding many reference "
-    "cards, not your one new character. Fill in your own content, written "
-    "the way the strongest cards above wrote theirs, based on the idea "
-    "you were given, not copied from any single card. After the block, "
-    "briefly ask if any changes are wanted; if changes are requested, "
-    "give back the FULL card again in that same clean block form - every "
-    "field, not just the one that changed."
-)
+
+def _build_response_template_compact(cards: list[Card]) -> str:
+    conv = analyze_conventions(cards)
+    convention_lines = build_convention_lines(conv)
+    example_sample = build_example_dialogue_sample(conv)
+
+    parts = [
+        "=== REQUIRED RESPONSE FORMAT — follow this exactly ===",
+        "Output the new character as ONE clean block, exactly these six fields "
+        "in this order, each label written out, a blank line between fields, and "
+        "NO commentary before/between/after them, so it is copy-paste-able as a "
+        'finished card. Do not include "=== CARD i/N ===" markers or a stats line '
+        "— that wrapper holds many reference cards, it is not part of a single card. "
+        "All six fields are required: do not skip, rename, merge, or reorder them, "
+        "and do not leave any as a one-line placeholder — Example Dialogue must be "
+        "a real, fully written exchange in the format shown, not a description of one.",
+    ]
+    if convention_lines:
+        parts.append(
+            "House style measured from the cards above — match it:\n" + "\n".join(convention_lines)
+        )
+    parts.append(
+        "Format to output:\n\n"
+        "Name: <character name>\n\n"
+        "Description: <appearance, background, key facts>\n\n"
+        "Personality: <traits, quirks, how they act>\n\n"
+        "Scenario: <the setting or situation>\n\n"
+        "First Message: <the character's opening message>\n\n"
+        f"Example Dialogue:\n{example_sample}"
+    )
+    parts.append(
+        "After the block, on a new line, briefly ask whether any changes are wanted. "
+        "If changes are requested, output the FULL card again in this same format — "
+        "every field, not just the changed one."
+    )
+    return "\n\n".join(parts)
 
 
 def normalize_extra_fields(value) -> frozenset[str]:
@@ -237,7 +302,7 @@ def to_markdown(
     for i, card in enumerate(cards, 1):
         lines.extend(_markdown_card_lines(i, len(cards), card, cap, full=full, extra_fields=extra_fields))
     body = "\n".join(lines).rstrip() + "\n"
-    template_block = f"\n\n---\n\n{_RESPONSE_TEMPLATE_MD}"
+    template_block = f"\n\n---\n\n{_build_response_template_md(cards)}"
     # Counted over body + template together so this number matches what
     # estimate_export()/the UI report for the same file - both cover the
     # complete file, not just the reference-data portion.
@@ -306,7 +371,7 @@ def to_compact(
     for i, card in enumerate(cards, 1):
         lines.extend(_compact_card_lines(i, len(cards), card, cap, full=full, extra_fields=extra_fields))
     body = "\n".join(lines).rstrip() + "\n"
-    template_block = f"\n\n{_RESPONSE_TEMPLATE_COMPACT}\n"
+    template_block = f"\n\n{_build_response_template_compact(cards)}\n"
     tc = count_tokens(body + template_block, tokenizer)
     return body + f"\n# {tc.count:,} tokens ({tc.method})" + template_block
 
@@ -360,20 +425,27 @@ def to_json(
         "stats": build_corpus_stats(cards, include_tags="tags" in extra_fields),
         "cards": [card_to_dict(c, full=full, extra_fields=extra_fields) for c in cards],
         # Placed after "cards" (not in "note") so it's the last thing read
-        # before responding - see _RESPONSE_TEMPLATE_MD's comment above.
+        # before responding - see _build_response_template_md's comment above.
         "response_template": {
             "instruction": (
                 "When you respond, give back the character as ONE clean block using "
-                "exactly these fields - the same six every card above has - with no "
-                "commentary mixed into or around them, so it can be copied and pasted "
-                "as-is. Fill in your own content, written the way the strongest cards "
-                "above wrote theirs (their level of detail, tone, structural "
-                "conventions), based on the idea you were given, not copied from any "
-                "single card. After the block, briefly ask if any changes are wanted; "
-                "if changes are requested, give back the FULL card again in that same "
-                "clean block form - every field, not just the one that changed."
+                "exactly these fields - the same six every card above has - with each "
+                "label written out, a blank line between fields, and no commentary "
+                "before/between/after them, so it can be copied and pasted as-is. All "
+                "six are required: do not skip, rename, merge, or reorder them, and do "
+                "not leave any as a one-line placeholder - mes_example in particular "
+                "must be a real, fully written exchange following house_style below, "
+                "not a description of one. Fill in your own content based on the idea "
+                "you were given, not copied from any single card. After the block, "
+                "briefly ask if any changes are wanted; if changes are requested, give "
+                "back the FULL card again in that same clean block form - every field, "
+                "not just the one that changed."
             ),
             "fields": ["name", "description", "personality", "scenario", "first_mes", "mes_example"],
+            # Measured from these cards (see conventions.py), so the model
+            # can match the corpus's real formatting instead of guessing.
+            "house_style": build_convention_lines(analyze_conventions(cards)),
+            "mes_example_format": build_example_dialogue_sample(analyze_conventions(cards)),
         },
     }
     # Counted over the whole payload including response_template, so this

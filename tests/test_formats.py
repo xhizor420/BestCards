@@ -173,15 +173,16 @@ def test_response_template_gives_the_six_field_schema_and_is_last():
     expected_fields = ["name", "description", "personality", "scenario", "first_mes", "mes_example"]
 
     md = to_markdown([card])
-    assert "when you respond" in md.lower()
+    assert "required response format" in md.lower()
     for label in ("Name:", "Description:", "Personality:", "Scenario:", "First Message:", "Example Dialogue:"):
         assert label in md
-    # It must be the true tail of the file, not buried mid-document.
+    # It must be the true tail of the file, not buried mid-document - the
+    # revision instruction is the last thing in the template.
     assert md.strip().endswith("revision.")
 
     compact = to_compact([card])
-    assert "when you respond" in compact.lower()
-    assert compact.strip().endswith("changed.")
+    assert "required response format" in compact.lower()
+    assert compact.strip().endswith("changed one.")
 
     payload = json.loads(to_json([card]))
     assert payload["response_template"]["fields"] == expected_fields
@@ -209,14 +210,33 @@ def test_response_template_asks_for_revision_loop_with_full_card_resend():
     card = _sample_card()
     for out in (to_markdown([card]), to_compact([card])):
         low = out.lower()
-        assert "ask if any changes" in low
-        assert "full card again" in low
-        assert "not just the one that changed" in low
+        assert "changes are wanted" in low
+        assert "full" in low and "card again" in low
+        assert "not just the changed one" in low
 
     payload = json.loads(to_json([card]))
     instruction = payload["response_template"]["instruction"].lower()
-    assert "ask if any changes" in instruction
+    assert "changes are wanted" in instruction
     assert "full card again" in instruction
+
+
+def test_response_template_demands_every_field_and_a_real_example_exchange():
+    # The reported failure was models half-filling the card - especially
+    # leaving Example Dialogue as a one-line description instead of an
+    # actual exchange - so the template must say this outright.
+    # Whitespace is normalized so these assertions don't break just
+    # because a sentence wraps at a different column.
+    card = _sample_card()
+    for out in (to_markdown([card]), to_compact([card])):
+        flat = " ".join(out.lower().split())
+        assert "required" in flat
+        assert "do not skip, rename, merge, or reorder" in flat
+        assert "not a description of one" in flat
+        assert "blank line between" in flat
+
+    instruction = " ".join(json.loads(to_json([card]))["response_template"]["instruction"].lower().split())
+    assert "do not skip, rename, merge, or reorder" in instruction
+    assert "not a description of one" in instruction
 
 
 def test_preamble_warns_against_averaging_into_a_composite():

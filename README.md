@@ -58,12 +58,49 @@ back in the same six fields the whole corpus is built from, ready to turn
 into an actual new card, not just a description of one.
 
 The template also says explicitly to give the character back as **one
-clean block with no commentary mixed into or around the fields**, so the
-response is directly copy-paste-able rather than the fields being buried
-in paragraphs of explanation — and to close by briefly **asking if any
-changes are wanted**, then on a revision request, **re-sending the whole
-card again** (every field, not just the one that changed) so it stays
-copy-paste-ready through as many rounds of edits as you want.
+clean block with no commentary mixed into or around the fields** (each
+label written out, blank line between fields), so the response is
+directly copy-paste-able rather than the fields being buried in
+paragraphs of explanation — that **all six fields are required**, none
+skipped, renamed, merged, reordered, or left as a one-line placeholder —
+and to close by briefly **asking if any changes are wanted**, then on a
+revision request, **re-sending the whole card again** (every field, not
+just the one that changed) so it stays copy-paste-ready through as many
+rounds of edits as you want.
+
+### Measured house style
+
+"Write it the way the reference cards did" isn't actionable on its own,
+and `mes_example` is where that failed hardest: its real shape is a set of
+*conventions* (a `<START>` line, `{{user}}:` / `{{char}}:` turn prefixes,
+`*asterisk actions*`) that a model won't reliably infer from a prose
+description of what the field is for — so it would half-fill the field, or
+write a one-line description of an exchange instead of an actual one.
+
+So the tool measures what your corpus actually does and states it as
+explicit rules with the real numbers behind them, right next to the
+template:
+
+```
+### House style of these cards — follow it
+
+- Use the {{char}} and {{user}} placeholder(s) rather than writing names literally (100% of these cards do).
+- Begin Example Dialogue with a `<START>` line (100% of these cards do).
+- Write Example Dialogue as alternating `{{user}}:` and `{{char}}:` lines, one turn per line (100% of these cards do — typically about 4 turn lines).
+- Wrap actions/narration in *asterisks*, keeping speech outside them (100% of these cards do).
+- First Message typically runs about 2 paragraphs in these cards, not one line.
+```
+
+The `Example Dialogue:` slot in the template is then filled with a
+correctly-formatted sample built from those same detected conventions, so
+the file *shows* the shape rather than describing it.
+
+This never invents a house style: a convention is only reported when a
+majority of cards that have the relevant field actually use it, and only
+when at least 3 cards carry that field at all. A small or stylistically
+mixed corpus simply gets no house-style section and a generic
+placeholder, rather than confident-sounding claims drawn from one or two
+examples.
 
 Six fields are always present for every card (truncated per `--max-chars`,
 never dropped, unless `--full`): **name, description, personality,
