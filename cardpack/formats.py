@@ -63,7 +63,11 @@ _CORPUS_PREAMBLE = (
     "personality archetypes, what makes a first_mes hook effective, and how "
     "description/personality/scenario are typically structured. Use those "
     "patterns as inspiration to design a NEW, original character. Do not copy "
-    "any single card's text verbatim."
+    "any single card's text verbatim. The labels below (Name/Desc/Personality/"
+    "etc.) are field markers for organizing THIS reference data only — write "
+    "your new character in plain, natural language and do not reuse these "
+    "labels, the \"=== CARD ===\" delimiters, or this file's structure in your "
+    "response."
 )
 
 
@@ -169,42 +173,43 @@ def to_markdown(
     return body + f"\n---\n{tc.count:,} tokens ({tc.method})\n"
 
 
-# Abbreviated field labels for the compact format, documented in a header
-# block so both humans and the receiving model can decode them.
-_COMPACT_LEGEND = (
-    "N=name T=tags D=description P=personality S=scenario G=first_mes "
-    "EX=example-dialogue CN=creator-notes AG=alt-greeting-count "
-    "LB=lorebook-entry-count"
-)
-
-
 def _compact_card_lines(
     i: int, total: int, card: Card, cap: int | None, *, full: bool, extra_fields: frozenset[str]
 ) -> list[str]:
+    """Labels here are short but spelled out (Name/Desc/Personality/...),
+    not single-letter codes (N/D/P/...). The letter codes this format used
+    to use turned out to be a real problem, not just an aesthetic one: a
+    model reading a file full of "N: ... D: ... P: ..." would sometimes
+    treat that as a template and echo the same cryptic labels back in its
+    own response instead of writing a normal character description - and
+    a human skimming the file couldn't tell what half the labels meant
+    either. Spelled-out words read as plain labels, not a format to copy,
+    while still costing only a few characters more than the letter codes
+    did."""
     title = card.name or card.nickname or "(unnamed)"
-    lines = [f"=== CARD {i}/{total} ===", f"N: {title}"]
+    lines = [f"=== CARD {i}/{total} ===", f"Name: {title}"]
     if "tags" in extra_fields and card.tags:
-        lines.append(f"T: {', '.join(card.tags)}")
+        lines.append(f"Tags: {', '.join(card.tags)}")
     if card.description:
-        lines.append(f"D: {_truncate(_clean(card.description), cap)}")
+        lines.append(f"Desc: {_truncate(_clean(card.description), cap)}")
     if card.personality:
-        lines.append(f"P: {_truncate(_clean(card.personality), cap)}")
+        lines.append(f"Personality: {_truncate(_clean(card.personality), cap)}")
     if card.scenario:
-        lines.append(f"S: {_truncate(_clean(card.scenario), cap)}")
+        lines.append(f"Scenario: {_truncate(_clean(card.scenario), cap)}")
     if card.first_mes:
-        lines.append(f"G: {_truncate(_clean(card.first_mes), cap)}")
+        lines.append(f"Greeting: {_truncate(_clean(card.first_mes), cap)}")
     if card.mes_example:
-        lines.append(f"EX: {_truncate(_clean(card.mes_example), cap)}")
+        lines.append(f"Example: {_truncate(_clean(card.mes_example), cap)}")
     if "creator_notes" in extra_fields and card.creator_notes:
-        lines.append(f"CN: {_truncate(_clean(card.creator_notes), cap)}")
+        lines.append(f"Notes: {_truncate(_clean(card.creator_notes), cap)}")
     if "alt_greetings" in extra_fields and card.alternate_greetings:
-        lines.append(f"AG: {len(card.alternate_greetings)}")
+        lines.append(f"AltGreetings: {len(card.alternate_greetings)}")
     if "lorebook" in extra_fields and card.lorebook_entries:
-        lines.append(f"LB: {len(card.lorebook_entries)}")
+        lines.append(f"Lorebook: {len(card.lorebook_entries)}")
     if "system_prompt" in extra_fields and full and card.system_prompt:
-        lines.append(f"SYS: {_truncate(_clean(card.system_prompt), cap)}")
+        lines.append(f"System: {_truncate(_clean(card.system_prompt), cap)}")
     if "post_history_instructions" in extra_fields and full and card.post_history_instructions:
-        lines.append(f"PHI: {_truncate(_clean(card.post_history_instructions), cap)}")
+        lines.append(f"PostHistory: {_truncate(_clean(card.post_history_instructions), cap)}")
     lines.append("")
     return lines
 
@@ -223,7 +228,6 @@ def to_compact(
     stats_line = format_stats_block(build_corpus_stats(cards, include_tags="tags" in extra_fields), compact=True)
     lines: list[str] = [
         _CORPUS_PREAMBLE.format(n=len(cards)),
-        f"Fields: {_COMPACT_LEGEND}",
         f"Stats: {stats_line}",
         "",
     ]

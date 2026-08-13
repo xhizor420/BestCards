@@ -1,3 +1,5 @@
+import re
+
 from cardpack.cardspec import parse_card_payload
 from cardpack.formats import estimate_export, normalize_extra_fields, to_compact, to_json, to_markdown
 from cardpack.png_chunks import read_text_chunks
@@ -124,3 +126,34 @@ def test_count_tokens_labels_method_and_falls_back_without_tiktoken():
     # this also guards against the heuristic path silently breaking.
     if not tc.exact:
         assert "heuristic" in tc.method
+
+
+# A model reading a batch of cards would sometimes echo the compact
+# format's old single/double-letter labels (N:, D:, P:, EX:, ...) back in
+# its own response instead of writing a normal character - and a human
+# skimming the file couldn't tell what half of them meant either. Labels
+# must stay spelled-out words, not cryptic codes, and the file should
+# explicitly tell the model not to reuse its structure.
+def test_compact_format_uses_spelled_out_labels_not_cryptic_codes():
+    card = _sample_card(
+        tags=["fantasy"], creator_notes="popular for its banter", mes_example="<START>\n{{user}}: hi"
+    )
+    out = to_compact([card], extra_fields="all", full=True)
+    assert "Name: Aria" in out
+    assert "Desc:" in out
+    assert "Personality:" in out
+    assert "Scenario:" in out
+    assert "Greeting:" in out
+    assert "Example:" in out
+    assert "Notes:" in out
+    assert "Tags:" in out
+    # None of the old one/two-letter label prefixes should appear at the
+    # start of a line anymore.
+    for line in out.splitlines():
+        assert not re.match(r"^(N|T|D|P|S|G|EX|CN|AG|LB|SYS|PHI):", line), f"cryptic label leaked back in: {line!r}"
+
+
+def test_preamble_tells_model_not_to_mimic_file_structure():
+    card = _sample_card()
+    for out in (to_markdown([card]), to_compact([card]), to_json([card])):
+        assert "do not reuse these" in out.lower() or "do not reuse" in out.lower()

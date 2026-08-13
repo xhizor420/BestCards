@@ -46,7 +46,7 @@ def test_cli_compact_format(tmp_path):
     rc = main([str(tmp_path), "-o", str(out_path), "--format", "compact"])
     assert rc == 0
     text = out_path.read_text(encoding="utf-8")
-    assert "N: Aria" in text
+    assert "Name: Aria" in text
 
 
 def test_cli_no_inputs_found_returns_error(tmp_path, capsys):

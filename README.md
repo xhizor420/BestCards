@@ -16,8 +16,9 @@ into one file, in a format built for pasting into an LLM's context rather
 than for machine round-tripping:
 
 - **`md`** (default) — a readable Markdown digest, one section per card.
-- **`compact`** — the same data with abbreviated field labels and no
-  Markdown syntax, for when every token counts.
+- **`compact`** — the same data with short plain-word labels (`Name:`,
+  `Desc:`, `Personality:`, ...) and no Markdown syntax, for when every
+  token counts.
 - **`json`** — full-fidelity structured output, if you want to feed it into
   another script instead of a model.
 
@@ -30,10 +31,16 @@ format opens with an explicit note telling the reading model "these are N
 separate existing characters — compare them for patterns, then design a
 new one, don't copy any single card verbatim," and every card gets an
 unambiguous `=== CARD i/N ===` (or `## Card i/N`) section so it can't get
-blended into its neighbors. That's the intended workflow — extract a batch
-(say, your top 100 cards), upload the export, and prompt something like
-"use this file as reference for what makes these cards work, then create a
-new character."
+blended into its neighbors. That note also explicitly tells the model not
+to reuse this file's own labels/delimiters in its response — the `compact`
+format learned that the hard way: it used to label fields with single
+letters (`N:`, `D:`, `P:`...), and some models would echo that cryptic
+shorthand back in their own output instead of writing a normal character,
+on top of it being hard for a human to skim too. Labels are spelled-out
+words now (`Name:`, `Desc:`, `Personality:`, ...) for exactly that reason.
+That's the intended workflow — extract a batch (say, your top 100 cards),
+upload the export, and prompt something like "use this file as reference
+for what makes these cards work, then create a new character."
 
 Six fields are always present for every card (truncated per `--max-chars`,
 never dropped, unless `--full`): **name, description, personality,
