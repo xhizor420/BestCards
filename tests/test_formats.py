@@ -1,3 +1,4 @@
+import json
 import re
 
 from cardpack.cardspec import parse_card_payload
@@ -153,10 +154,41 @@ def test_compact_format_uses_spelled_out_labels_not_cryptic_codes():
         assert not re.match(r"^(N|T|D|P|S|G|EX|CN|AG|LB|SYS|PHI):", line), f"cryptic label leaked back in: {line!r}"
 
 
-def test_preamble_tells_model_not_to_mimic_file_structure():
+def test_response_template_tells_model_not_to_reuse_corpus_wrapper():
+    # The multi-card "=== CARD i/N ===" / "## Card i/N" wrapper exists to
+    # hold many reference cards in one file - a model echoing that same
+    # wrapper back for its single new character was the original bug this
+    # is guarding against.
     card = _sample_card()
-    for out in (to_markdown([card]), to_compact([card]), to_json([card])):
-        assert "do not reuse these" in out.lower() or "do not reuse" in out.lower()
+    for out in (to_markdown([card]), to_compact([card])):
+        low = out.lower()
+        assert "card i/n" in low or "=== card i/n ===" in low
+    out_json = to_json([card])
+    assert "response_template" in out_json
+    assert '"fields"' in out_json
+
+
+def test_response_template_gives_the_six_field_schema_and_is_last():
+    card = _sample_card()
+    expected_fields = ["name", "description", "personality", "scenario", "first_mes", "mes_example"]
+
+    md = to_markdown([card])
+    assert "when you respond" in md.lower()
+    for label in ("Name:", "Description:", "Personality:", "Scenario:", "First Message:", "Example Dialogue:"):
+        assert label in md
+    # It must be the true tail of the file, not buried mid-document.
+    assert md.strip().endswith("voice>")
+
+    compact = to_compact([card])
+    assert "when you respond" in compact.lower()
+    assert compact.strip().endswith("card.")
+
+    payload = json.loads(to_json([card]))
+    assert payload["response_template"]["fields"] == expected_fields
+    # response_template comes after "cards" (only trailing metadata like
+    # tokens/token_method follows it), not buried before the reference data.
+    keys = list(payload.keys())
+    assert keys.index("response_template") > keys.index("cards")
 
 
 def test_preamble_warns_against_averaging_into_a_composite():

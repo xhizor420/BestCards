@@ -74,11 +74,50 @@ _CORPUS_PREAMBLE = (
     "that. Do not treat any length here, including the range in the stats "
     "below, as a target: let your OWN character concept's actual complexity "
     "decide how long it needs to be, shorter or longer than what's typical "
-    "in this corpus. The labels "
-    "below (Name/Desc/Personality/etc.) are field markers for organizing THIS "
-    "reference data only — write your new character in plain, natural language "
-    "and do not reuse these labels, the \"=== CARD ===\" delimiters, or this "
-    "file's structure in your response."
+    "in this corpus. Read every card below before responding — the response "
+    "format you must use is given at the very end of this file, after the "
+    "last card."
+)
+
+# Placed at the very end of the file (after every card), not in the
+# opening preamble, so it's the last thing read before the model has to
+# respond - the point in the file where format instructions have the most
+# leverage. This exists because an earlier version's "don't copy this
+# file's structure/labels" instruction, on its own, overcorrected: a model
+# would default to unstructured prose with no fields at all instead of the
+# six-field shape the whole point of this export is to teach it. This gives
+# it the exact shape to fill in (explicitly NOT the multi-card "=== CARD
+# i/N ===" wrapper this file uses to hold many cards) - and reminds it,
+# right where it matters, to fill that shape in using what it just read,
+# not fixed text.
+_RESPONSE_TEMPLATE_MD = """## When you respond
+
+Structure the new character using exactly this template, one field per line -
+do not include "## Card i/N" headers, corpus stats, or any of this file's
+multi-card wrapper; that's for holding many reference cards, not your one
+new character. These are the same six fields every card above has - use
+them, but fill in your own content: write each field the way the strongest
+cards above wrote theirs (their level of detail, tone, and structural
+conventions), based on the idea you were given, not copied from any single
+card.
+
+Name: <character name>
+Description: <appearance, background, key facts>
+Personality: <personality traits, quirks, how they typically act>
+Scenario: <the setting or situation this character exists in>
+First Message: <the opening message this character sends to start a chat>
+Example Dialogue: <a short sample exchange demonstrating this character's voice>
+"""
+
+_RESPONSE_TEMPLATE_COMPACT = (
+    "When you respond: structure the new character using exactly these six "
+    "fields, one per line, in this order - Name / Description / Personality "
+    "/ Scenario / First Message / Example Dialogue. Do not include "
+    '"=== CARD i/N ===" markers or a stats line - that wrapper is for '
+    "holding many reference cards, not your one new character. Same fields "
+    "every card above used; fill in your own content, written the way the "
+    "strongest cards above wrote theirs, based on the idea you were given, "
+    "not copied from any single card."
 )
 
 
@@ -180,8 +219,12 @@ def to_markdown(
     for i, card in enumerate(cards, 1):
         lines.extend(_markdown_card_lines(i, len(cards), card, cap, full=full, extra_fields=extra_fields))
     body = "\n".join(lines).rstrip() + "\n"
-    tc = count_tokens(body, tokenizer)
-    return body + f"\n---\n{tc.count:,} tokens ({tc.method})\n"
+    template_block = f"\n\n---\n\n{_RESPONSE_TEMPLATE_MD}"
+    # Counted over body + template together so this number matches what
+    # estimate_export()/the UI report for the same file - both cover the
+    # complete file, not just the reference-data portion.
+    tc = count_tokens(body + template_block, tokenizer)
+    return body + f"\n---\n{tc.count:,} tokens ({tc.method})" + template_block
 
 
 def _compact_card_lines(
@@ -245,8 +288,9 @@ def to_compact(
     for i, card in enumerate(cards, 1):
         lines.extend(_compact_card_lines(i, len(cards), card, cap, full=full, extra_fields=extra_fields))
     body = "\n".join(lines).rstrip() + "\n"
-    tc = count_tokens(body, tokenizer)
-    return body + f"\n# {tc.count:,} tokens ({tc.method})\n"
+    template_block = f"\n\n{_RESPONSE_TEMPLATE_COMPACT}\n"
+    tc = count_tokens(body + template_block, tokenizer)
+    return body + f"\n# {tc.count:,} tokens ({tc.method})" + template_block
 
 
 def card_to_dict(card: Card, *, full: bool = True, extra_fields=ALL_EXTRA_FIELDS) -> dict:
@@ -297,7 +341,21 @@ def to_json(
         "count": len(cards),
         "stats": build_corpus_stats(cards, include_tags="tags" in extra_fields),
         "cards": [card_to_dict(c, full=full, extra_fields=extra_fields) for c in cards],
+        # Placed after "cards" (not in "note") so it's the last thing read
+        # before responding - see _RESPONSE_TEMPLATE_MD's comment above.
+        "response_template": {
+            "instruction": (
+                "When you respond, structure the new character using exactly these "
+                "fields - the same six every card above has. Fill in your own "
+                "content, written the way the strongest cards above wrote theirs "
+                "(their level of detail, tone, structural conventions), based on "
+                "the idea you were given, not copied from any single card."
+            ),
+            "fields": ["name", "description", "personality", "scenario", "first_mes", "mes_example"],
+        },
     }
+    # Counted over the whole payload including response_template, so this
+    # matches what estimate_export()/the UI report for the same file.
     text = json.dumps(payload, indent=2, ensure_ascii=False)
     tc = count_tokens(text, tokenizer)
     payload["tokens"] = tc.count

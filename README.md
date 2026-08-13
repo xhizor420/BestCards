@@ -31,16 +31,31 @@ format opens with an explicit note telling the reading model "these are N
 separate existing characters — compare them for patterns, then design a
 new one, don't copy any single card verbatim," and every card gets an
 unambiguous `=== CARD i/N ===` (or `## Card i/N`) section so it can't get
-blended into its neighbors. That note also explicitly tells the model not
-to reuse this file's own labels/delimiters in its response — the `compact`
-format learned that the hard way: it used to label fields with single
-letters (`N:`, `D:`, `P:`...), and some models would echo that cryptic
-shorthand back in their own output instead of writing a normal character,
-on top of it being hard for a human to skim too. Labels are spelled-out
-words now (`Name:`, `Desc:`, `Personality:`, ...) for exactly that reason.
-That's the intended workflow — extract a batch (say, your top 100 cards),
-upload the export, and prompt something like "use this file as reference
-for what makes these cards work, then create a new character."
+blended into its neighbors. `compact`'s field labels are spelled-out words
+(`Name:`, `Desc:`, `Personality:`, ...), not single-letter codes — it used
+to use letter codes, and some models echoed that cryptic shorthand back in
+their own output instead of writing a normal character, on top of it being
+hard for a human to skim too. That's the intended workflow — extract a
+batch (say, your top 100 cards), upload the export, and prompt something
+like "use this file as reference for what makes these cards work, then
+create a new character."
+
+### Response template
+
+The very last thing in every export — after every card, so it's the last
+thing read before the model has to respond — is an explicit template for
+its answer: the same six fields every card above has (Name, Description,
+Personality, Scenario, First Message, Example Dialogue), with an
+instruction to fill them in the way the strongest reference cards wrote
+theirs, not to copy any one of them, and *not* to reuse this file's own
+multi-card wrapper (`=== CARD i/N ===` headers, the stats block) for its
+one new character. This exists because just telling a model "design a new
+character" from a pile of 100 reference cards tends to get you either free
+-form prose with no usable structure, or — the opposite failure — an echo
+of the file's own internal shorthand. Giving it the exact shape to fill in,
+right where it matters most in the prompt, fixes both: you get a character
+back in the same six fields the whole corpus is built from, ready to turn
+into an actual new card, not just a description of one.
 
 Six fields are always present for every card (truncated per `--max-chars`,
 never dropped, unless `--full`): **name, description, personality,
