@@ -159,19 +159,32 @@ def build_corpus_stats(cards: Iterable[Card], *, include_tags: bool = True) -> d
     tag_counts: Counter[str] = Counter()
     spec_counts: Counter[str] = Counter()
     desc_lengths = []
+    total_bloat_removed = 0
+    cards_with_bloat = 0
+    bloat_by_card: list[tuple[str, int]] = []
     for c in cards:
         if include_tags:
             tag_counts.update(t.strip().lower() for t in c.tags if t.strip())
         spec_counts[c.spec_version] += 1
         if c.description:
             desc_lengths.append(len(c.description))
+        if c.bloat_chars_removed:
+            total_bloat_removed += c.bloat_chars_removed
+            cards_with_bloat += 1
+            bloat_by_card.append((c.name or c.nickname or "(unnamed)", c.bloat_chars_removed))
+    bloat_by_card.sort(key=lambda pair: pair[1], reverse=True)
 
     return {
         "count": len(cards),
         "spec_versions": dict(sorted(spec_counts.items())),
         "top_tags": tag_counts.most_common(20),
         "avg_description_chars": round(sum(desc_lengths) / len(desc_lengths)) if desc_lengths else 0,
+        "min_description_chars": min(desc_lengths) if desc_lengths else 0,
+        "max_description_chars": max(desc_lengths) if desc_lengths else 0,
         "cards_missing_description": len(cards) - len(desc_lengths),
+        "total_bloat_chars_removed": total_bloat_removed,
+        "cards_with_bloat": cards_with_bloat,
+        "top_bloat_cards": bloat_by_card[:3],
     }
 
 
@@ -182,6 +195,16 @@ def format_stats_block(stats: dict, *, compact: bool = False) -> str:
             parts.append("spec=" + ",".join(f"v{v}:{n}" for v, n in stats["spec_versions"].items()))
         if stats["top_tags"]:
             parts.append("top_tags=" + ",".join(f"{t}:{n}" for t, n in stats["top_tags"][:10]))
+        if stats["max_description_chars"]:
+            parts.append(
+                f"desc_len={stats['min_description_chars']}-{stats['max_description_chars']}"
+                f"(avg {stats['avg_description_chars']})"
+            )
+        if stats["total_bloat_chars_removed"]:
+            parts.append(
+                f"bloat_stripped={stats['total_bloat_chars_removed']}chars"
+                f"(~{round(stats['total_bloat_chars_removed'] / 4)}tok) from {stats['cards_with_bloat']} cards"
+            )
         return " | ".join(parts)
 
     lines = [f"- Cards: {stats['count']}"]
@@ -191,7 +214,22 @@ def format_stats_block(stats: dict, *, compact: bool = False) -> str:
     if stats["top_tags"]:
         tags = ", ".join(f"{t} ({n})" for t, n in stats["top_tags"])
         lines.append(f"- Top tags: {tags}")
-    lines.append(f"- Avg description length: {stats['avg_description_chars']} chars")
+    if stats["max_description_chars"]:
+        lines.append(
+            f"- Description length: {stats['min_description_chars']}–{stats['max_description_chars']} chars "
+            f"(avg {stats['avg_description_chars']}) — real variety, not noise; see the note above about not "
+            f"averaging toward the middle of that range."
+        )
     if stats["cards_missing_description"]:
         lines.append(f"- Cards with no description: {stats['cards_missing_description']}")
+    if stats["total_bloat_chars_removed"]:
+        approx_tokens = round(stats["total_bloat_chars_removed"] / 4)
+        lines.append(
+            f"- Markup/decoration already stripped: ~{stats['total_bloat_chars_removed']:,} chars "
+            f"(~{approx_tokens:,} tokens) of embedded images/HTML/decorative separators removed from "
+            f"{stats['cards_with_bloat']} card(s) before the text below — nothing of substance was lost."
+        )
+        if stats["top_bloat_cards"]:
+            worst = ", ".join(f"{name} (~{n:,} chars)" for name, n in stats["top_bloat_cards"])
+            lines.append(f"  Heaviest: {worst}")
     return "\n".join(lines)

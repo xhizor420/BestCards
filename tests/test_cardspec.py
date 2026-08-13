@@ -66,3 +66,24 @@ def test_raises_on_garbage_base64():
     png = build_png([("tEXt", "chara", "%%%not-valid-base64-or-json%%%")])
     with pytest.raises(CardExtractionError):
         parse_card_payload(read_text_chunks(png))
+
+
+def test_bloat_is_stripped_from_fields_at_extraction_time():
+    huge_b64 = "A" * 3000
+    payload = card_v2_payload(
+        description=f'A wandering elf ranger. <img src="data:image/png;base64,{huge_b64}"> Very brave.',
+        mes_example="Aria smiles.\n————————————\n{{user}}: Hi",
+    )
+    png = build_png([("tEXt", "chara", b64_json(payload))])
+    card = parse_card_payload(read_text_chunks(png))
+
+    assert "base64" not in card.description
+    assert "A wandering elf ranger." in card.description
+    assert "Very brave." in card.description
+    assert "————" not in card.mes_example
+    assert card.bloat_chars_removed > 2900  # mostly the embedded image data
+
+
+def test_clean_card_reports_zero_bloat_removed():
+    card = parse_card_payload(read_text_chunks(build_png([("tEXt", "chara", b64_json(card_v2_payload()))])))
+    assert card.bloat_chars_removed == 0

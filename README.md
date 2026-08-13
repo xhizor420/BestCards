@@ -56,6 +56,36 @@ entirely, with no toggle to bring it back — it's not a content pattern a
 model can learn from, just token cost with no analytical payoff for this
 use case.
 
+### Markup/bloat stripping
+
+Cards pulled from web platforms often carry embedded `<img>` tags (sometimes
+with a multi-KB base64 image baked right into the attribute), other HTML
+formatting, HTML comments, markdown image syntax, and purely decorative
+separator lines (`————————`, `★★★★★★★★`) — none of which help a model
+understand personality, scenario, or voice. This is stripped unconditionally
+at extraction time, before truncation, for every card — there's no flag to
+turn it off, because unlike truncation it never trades away real content.
+The corpus stats block reports exactly what was removed and from which
+cards (`Markup/decoration already stripped: ~12,160 chars (~3,040 tokens)
+... Heaviest: Zed (~12,160 chars)`), so you can see which specific PNGs
+were the worst offenders. Genuine content is left alone — an elongated
+word like `"aaaaaaaah"` or a `*bold action*` line is never mistaken for
+decoration, and exporter conventions like `<START>` inside `mes_example`
+are never mistaken for an HTML tag.
+
+### Guarding against "averaging into a bland composite"
+
+Handing a model 100 reference cards at once has a real failure mode: it
+regresses toward a generic blend of all of them instead of drawing on what
+makes individual cards distinctive. Every export's opening note says these
+are curated, high-quality references — not a random or average sample —
+and explicitly tells the model not to average them into a composite, but to
+notice what makes individual cards effective and match that bar with
+something original. The stats block backs this up with the actual spread
+(`Description length: 44–2,400 chars (avg 620) — real variety, not noise`)
+instead of just a flat average, since a flat average is exactly the kind of
+number that invites "aim for the middle" thinking.
+
 ### Token counting
 
 There's no single universal tokenizer — GPT, Claude, GLM, DeepSeek, Llama,
@@ -192,10 +222,10 @@ bestcards ./my_cards -o cards_export.md
 - Cards with no recognizable payload are skipped and reported, not fatal to
   the batch.
 - Every export starts with a corpus-stats block (card count, spec-version
-  mix, top tags if included, average description length) and ends with a
-  labeled token count (see "Token counting" above), so before you paste
-  hundreds of cards into a model you know what you're about to spend and
-  what the batch looks like at a glance.
+  mix, top tags if included, description length range, markup/bloat
+  stripped) and ends with a labeled token count (see "Token counting"
+  above), so before you paste hundreds of cards into a model you know
+  what you're about to spend and what the batch looks like at a glance.
 
 ## Development
 

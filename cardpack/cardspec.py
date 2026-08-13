@@ -27,6 +27,7 @@ import json
 from dataclasses import dataclass, field
 from typing import Any
 
+from .cleaning import strip_bloat
 from .png_chunks import TextChunk
 
 # Keys that legitimately hold card JSON, in preference order.
@@ -78,6 +79,13 @@ class Card:
     spec_version: str = "unknown"  # "1.0" | "2.0" | "3.0"
     source_keyword: str = ""  # which PNG chunk keyword the data came from
     source_file: str = ""
+
+    # How many characters of markup/decoration (embedded images, HTML
+    # tags, decorative separator lines, ...) strip_bloat() removed from
+    # this card's text fields - see cleaning.py. Pure overhead removal,
+    # applied unconditionally at extraction time, tracked here so the
+    # corpus stats can report what it actually saved.
+    bloat_chars_removed: int = 0
 
     def is_empty(self) -> bool:
         return not (self.name or self.description or self.personality or self.first_mes)
@@ -146,6 +154,44 @@ def _first_present(data: dict[str, Any], aliases: tuple[str, ...]) -> Any:
     return None
 
 
+_BLOAT_CHECKED_TEXT_FIELDS = (
+    "description",
+    "personality",
+    "scenario",
+    "first_mes",
+    "mes_example",
+    "creator_notes",
+    "system_prompt",
+    "post_history_instructions",
+)
+
+
+def _strip_bloat_from_card(card: Card) -> Card:
+    total_removed = 0
+
+    for field_name in _BLOAT_CHECKED_TEXT_FIELDS:
+        cleaned, removed = strip_bloat(getattr(card, field_name))
+        setattr(card, field_name, cleaned)
+        total_removed += removed
+
+    cleaned_greetings = []
+    for greeting in card.alternate_greetings:
+        cleaned, removed = strip_bloat(greeting)
+        cleaned_greetings.append(cleaned)
+        total_removed += removed
+    card.alternate_greetings = cleaned_greetings
+
+    cleaned_entries = []
+    for entry in card.lorebook_entries:
+        cleaned, removed = strip_bloat(entry.get("content", ""))
+        total_removed += removed
+        cleaned_entries.append({**entry, "content": cleaned})
+    card.lorebook_entries = cleaned_entries
+
+    card.bloat_chars_removed = total_removed
+    return card
+
+
 def normalize_card_data(data: dict[str, Any], spec_version: str, source_keyword: str) -> Card:
     kwargs: dict[str, Any] = {"spec_version": spec_version, "source_keyword": source_keyword}
     for field_name, aliases in _FIELD_ALIASES.items():
@@ -155,7 +201,8 @@ def normalize_card_data(data: dict[str, Any], spec_version: str, source_keyword:
         elif value is not None:
             kwargs[field_name] = str(value)
     kwargs["lorebook_entries"] = _extract_lorebook_entries(data)
-    return Card(**kwargs)
+    card = Card(**kwargs)
+    return _strip_bloat_from_card(card)
 
 
 def parse_card_payload(text_chunks: list[TextChunk]) -> Card:

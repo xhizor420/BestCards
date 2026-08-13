@@ -157,3 +157,11 @@ def test_preamble_tells_model_not_to_mimic_file_structure():
     card = _sample_card()
     for out in (to_markdown([card]), to_compact([card]), to_json([card])):
         assert "do not reuse these" in out.lower() or "do not reuse" in out.lower()
+
+
+def test_preamble_warns_against_averaging_into_a_composite():
+    card = _sample_card()
+    for out in (to_markdown([card]), to_compact([card]), to_json([card])):
+        low = out.lower()
+        assert "do not average" in low or "not average" in low
+        assert "curated" in low or "high-quality" in low

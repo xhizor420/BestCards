@@ -1,4 +1,5 @@
-from cardpack.stats import TOKENIZER_PRESETS, count_tokens
+from cardpack.cardspec import Card
+from cardpack.stats import TOKENIZER_PRESETS, build_corpus_stats, count_tokens, format_stats_block
 
 
 def test_heuristic_is_the_default_and_never_touches_network():
@@ -56,3 +57,48 @@ def test_token_count_is_deterministic_for_repeat_calls():
     a = count_tokens(text, "deepseek")
     b = count_tokens(text, "deepseek")
     assert a == b
+
+
+def _card(**overrides):
+    defaults = dict(name="Aria", description="A wandering elf ranger.", spec_version="2.0")
+    defaults.update(overrides)
+    return Card(**defaults)
+
+
+def test_corpus_stats_reports_description_length_range():
+    stats = build_corpus_stats([_card(description="short"), _card(description="x" * 500)])
+    assert stats["min_description_chars"] == 5
+    assert stats["max_description_chars"] == 500
+    assert stats["avg_description_chars"] > 0
+
+
+def test_corpus_stats_aggregates_bloat_removed():
+    cards = [_card(name="A", bloat_chars_removed=100), _card(name="B", bloat_chars_removed=4000), _card(name="C")]
+    stats = build_corpus_stats(cards)
+    assert stats["total_bloat_chars_removed"] == 4100
+    assert stats["cards_with_bloat"] == 2
+    assert stats["top_bloat_cards"][0] == ("B", 4000)
+
+
+def test_corpus_stats_zero_bloat_when_no_cards_have_any():
+    stats = build_corpus_stats([_card(), _card(name="Zed")])
+    assert stats["total_bloat_chars_removed"] == 0
+    assert stats["cards_with_bloat"] == 0
+
+
+def test_format_stats_block_mentions_bloat_savings_and_range():
+    cards = [_card(description="x" * 500, bloat_chars_removed=4000)]
+    stats = build_corpus_stats(cards)
+    block = format_stats_block(stats)
+    assert "stripped" in block.lower()
+    assert "4,000" in block or "4000" in block
+    assert "500" in block  # description length range mentions the max
+
+    compact_block = format_stats_block(stats, compact=True)
+    assert "bloat_stripped" in compact_block
+
+
+def test_format_stats_block_omits_bloat_line_when_nothing_removed():
+    stats = build_corpus_stats([_card()])
+    block = format_stats_block(stats)
+    assert "stripped" not in block.lower()

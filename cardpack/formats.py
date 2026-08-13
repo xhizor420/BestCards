@@ -57,17 +57,21 @@ ALL_EXTRA_FIELDS = ("tags", "creator_notes", "system_prompt", "post_history_inst
 DEFAULT_EXTRA_FIELDS = frozenset({"tags"})
 
 _CORPUS_PREAMBLE = (
-    "This file is a REFERENCE CORPUS of {n} separate, existing character cards. "
-    "It is not one character. Each numbered section below is a distinct card, "
+    "This file is a REFERENCE CORPUS of {n} separate, existing character cards, "
+    "curated as HIGH-QUALITY examples — not a random or average sample. It is "
+    "not one character. Each numbered section below is a distinct card, "
     "included so you can compare them and identify patterns — recurring "
     "personality archetypes, what makes a first_mes hook effective, and how "
     "description/personality/scenario are typically structured. Use those "
-    "patterns as inspiration to design a NEW, original character. Do not copy "
-    "any single card's text verbatim. The labels below (Name/Desc/Personality/"
-    "etc.) are field markers for organizing THIS reference data only — write "
-    "your new character in plain, natural language and do not reuse these "
-    "labels, the \"=== CARD ===\" delimiters, or this file's structure in your "
-    "response."
+    "patterns as inspiration to design a NEW, original character — but do NOT "
+    "average these cards into a bland composite and do NOT copy any single "
+    "card's text verbatim. Notice what makes individual cards distinctive and "
+    "effective (a sharp hook, a specific quirk, a clear voice), and match that "
+    "quality bar with something that has its own distinct identity. The labels "
+    "below (Name/Desc/Personality/etc.) are field markers for organizing THIS "
+    "reference data only — write your new character in plain, natural language "
+    "and do not reuse these labels, the \"=== CARD ===\" delimiters, or this "
+    "file's structure in your response."
 )
 
 
@@ -253,6 +257,7 @@ def card_to_dict(card: Card, *, full: bool = True, extra_fields=ALL_EXTRA_FIELDS
         "spec_version": card.spec_version,
         "source_keyword": card.source_keyword,
         "source_file": card.source_file,
+        "bloat_chars_removed": card.bloat_chars_removed,
     }
     if "tags" in extra_fields:
         d["tags"] = card.tags
