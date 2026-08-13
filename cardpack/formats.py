@@ -44,7 +44,7 @@ import os
 from typing import Iterable
 
 from .cardspec import Card
-from .stats import build_corpus_stats, count_tokens, format_stats_block
+from .stats import DEFAULT_TOKENIZER, build_corpus_stats, count_tokens, format_stats_block
 
 # Fields whose text can be huge relative to how useful they are for
 # cross-card pattern analysis. In digest (non --full) mode we cap them.
@@ -149,6 +149,7 @@ def to_markdown(
     full: bool = False,
     max_chars: int | None = _DEFAULT_MAX_CHARS,
     extra_fields=DEFAULT_EXTRA_FIELDS,
+    tokenizer: str = DEFAULT_TOKENIZER,
 ) -> str:
     cards = list(cards)
     cap = None if full else max_chars
@@ -164,7 +165,7 @@ def to_markdown(
     for i, card in enumerate(cards, 1):
         lines.extend(_markdown_card_lines(i, len(cards), card, cap, full=full, extra_fields=extra_fields))
     body = "\n".join(lines).rstrip() + "\n"
-    tc = count_tokens(body)
+    tc = count_tokens(body, tokenizer)
     return body + f"\n---\n{tc.count:,} tokens ({tc.method})\n"
 
 
@@ -214,6 +215,7 @@ def to_compact(
     full: bool = False,
     max_chars: int | None = _DEFAULT_MAX_CHARS,
     extra_fields=DEFAULT_EXTRA_FIELDS,
+    tokenizer: str = DEFAULT_TOKENIZER,
 ) -> str:
     cards = list(cards)
     cap = None if full else max_chars
@@ -228,7 +230,7 @@ def to_compact(
     for i, card in enumerate(cards, 1):
         lines.extend(_compact_card_lines(i, len(cards), card, cap, full=full, extra_fields=extra_fields))
     body = "\n".join(lines).rstrip() + "\n"
-    tc = count_tokens(body)
+    tc = count_tokens(body, tokenizer)
     return body + f"\n# {tc.count:,} tokens ({tc.method})\n"
 
 
@@ -264,7 +266,12 @@ def card_to_dict(card: Card, *, full: bool = True, extra_fields=ALL_EXTRA_FIELDS
 
 
 def to_json(
-    cards: Iterable[Card], *, full: bool = False, max_chars: int | None = None, extra_fields=DEFAULT_EXTRA_FIELDS
+    cards: Iterable[Card],
+    *,
+    full: bool = False,
+    max_chars: int | None = None,
+    extra_fields=DEFAULT_EXTRA_FIELDS,
+    tokenizer: str = DEFAULT_TOKENIZER,
 ) -> str:
     del max_chars  # JSON output is governed by --full only, not truncation
     cards = list(cards)
@@ -276,7 +283,7 @@ def to_json(
         "cards": [card_to_dict(c, full=full, extra_fields=extra_fields) for c in cards],
     }
     text = json.dumps(payload, indent=2, ensure_ascii=False)
-    tc = count_tokens(text)
+    tc = count_tokens(text, tokenizer)
     payload["tokens"] = tc.count
     payload["token_method"] = tc.method
     return json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
@@ -296,6 +303,7 @@ def estimate_export(
     full: bool = False,
     max_chars: int | None = _DEFAULT_MAX_CHARS,
     extra_fields=DEFAULT_EXTRA_FIELDS,
+    tokenizer: str = DEFAULT_TOKENIZER,
 ) -> dict:
     """Token estimate for the whole export plus each card's own marginal
     contribution (the size of just its section, not shared preamble/stats),
@@ -305,8 +313,8 @@ def estimate_export(
         raise ValueError(f"unknown format {format!r}")
 
     extra_fields = normalize_extra_fields(extra_fields)
-    total_text = WRITERS[format](cards, full=full, max_chars=max_chars, extra_fields=extra_fields)
-    total_tc = count_tokens(total_text)
+    total_text = WRITERS[format](cards, full=full, max_chars=max_chars, extra_fields=extra_fields, tokenizer=tokenizer)
+    total_tc = count_tokens(total_text, tokenizer)
     cap = None if full else max_chars
 
     per_card = []
@@ -317,7 +325,7 @@ def estimate_export(
             block = "\n".join(_markdown_card_lines(i, len(cards), card, cap, full=full, extra_fields=extra_fields))
         else:  # json
             block = json.dumps(card_to_dict(card, full=full, extra_fields=extra_fields), ensure_ascii=False)
-        card_tc = count_tokens(block)
+        card_tc = count_tokens(block, tokenizer)
         per_card.append({"index": i, "name": card.name or card.nickname or "(unnamed)", "tokens": card_tc.count})
 
     return {"total_tokens": total_tc.count, "method": total_tc.method, "cards": per_card}

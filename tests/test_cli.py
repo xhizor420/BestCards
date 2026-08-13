@@ -56,3 +56,27 @@ def test_cli_no_inputs_found_returns_error(tmp_path, capsys):
     assert rc == 1
     captured = capsys.readouterr()
     assert "No PNG files found" in captured.err
+
+
+def test_cli_fields_flag_controls_optional_fields(tmp_path):
+    _write_card_png(tmp_path / "aria.png", name="Aria", creator_notes="Loved for its banter.")
+
+    out_default = tmp_path / "default.txt"
+    main([str(tmp_path), "-o", str(out_default), "--format", "compact"])
+    assert "banter" not in out_default.read_text(encoding="utf-8")
+
+    out_with_notes = tmp_path / "with_notes.txt"
+    main([str(tmp_path), "-o", str(out_with_notes), "--format", "compact", "--fields", "tags,creator_notes"])
+    assert "banter" in out_with_notes.read_text(encoding="utf-8")
+
+
+def test_cli_tokenizer_flag_prints_labeled_token_count(tmp_path, capsys):
+    _write_card_png(tmp_path / "aria.png", name="Aria")
+    out_path = tmp_path / "out.md"
+    rc = main([str(tmp_path), "-o", str(out_path), "--tokenizer", "deepseek"])
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert "tokens (" in captured.out
+    # deepseek's tokenizer.json can't be fetched in this sandboxed test
+    # environment, so this should name-and-fall-back rather than crash.
+    assert "deepseek" in captured.out.lower()

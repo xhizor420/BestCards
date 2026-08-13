@@ -51,18 +51,39 @@ use case.
 
 ### Token counting
 
-Every export ends with a token count and, honestly, a label saying how it
-was computed — there's no single universal tokenizer (GPT, Claude, Llama,
-etc. all split text differently), so nothing here claims false precision:
+There's no single universal tokenizer — GPT, Claude, GLM, DeepSeek, Llama,
+etc. all split text differently, so "the" token count doesn't exist
+independent of which model you're targeting. Pick one with `--tokenizer`
+(CLI) or the tokenizer dropdown (UI):
 
-- If [`tiktoken`](https://github.com/openai/tiktoken) is installed
-  (`pip install tiktoken`) and can reach its one-time encoding-data
-  download, counts are **exact** for GPT-4/3.5's tokenizer (`cl100k_base`)
-  and a close proxy for most other modern BPE tokenizers, including
-  Claude's. Output is labeled `tiktoken/cl100k_base`.
-- Otherwise it falls back to a word-aware heuristic (~0.75 tokens/word,
-  better than a flat chars/4), labeled `heuristic` so you always know
-  which one produced the number in front of you.
+| Name | What it uses | Needs |
+| --- | --- | --- |
+| `heuristic` (default) | word-aware estimate (~0.75 tok/word, better than flat chars/4) | nothing — instant, no download |
+| `deepseek` | DeepSeek-V3's real tokenizer.json | `pip install tokenizers huggingface_hub` + one-time fetch from huggingface.co |
+| `glm` | GLM-4.5's real tokenizer.json | same as above |
+| `gpt` | tiktoken's `cl100k_base` (exact for GPT-4/3.5, a reasonable proxy for most other BPE tokenizers) | `pip install tiktoken` + one-time fetch from openaipublic's CDN |
+| any `org/repo` | that Hugging Face model's tokenizer.json | same as deepseek/glm |
+
+`pip install -e ".[tokens]"` installs everything needed for all of them at
+once. The `deepseek`/`glm`/`gpt`/custom-repo presets each need a one-time
+network fetch to cache their tokenizer data locally (a few MB) the first
+time they're used — after that, counts are instant. If the package isn't
+installed, or the fetch can't complete (offline, a restrictive proxy, a
+gated repo), counting falls back to the heuristic automatically rather
+than failing the export — and the printed/displayed method **always says
+plainly which one actually produced the number, including why it fell
+back if it did**, so nothing here is ever presented as more precise than
+it actually is.
+
+Note: I built and tested the `deepseek`/`glm`/`gpt` presets' fallback
+behavior (missing package, blocked network) thoroughly, but the sandbox
+this was developed in blocks outbound access to both huggingface.co and
+openaipublic's CDN, so the actual "download succeeds, count is exact"
+path couldn't be exercised there. It follows the same well-defined
+`tokenizers`/`tiktoken` API either way and should just work on a normal
+machine with internet access — if a default repo (`deepseek-ai/DeepSeek-V3`,
+`zai-org/GLM-4.5`) turns out to be stale, pass any other `org/repo` id
+directly as `--tokenizer` to point at the one you actually want.
 
 ## Requirements
 
@@ -82,13 +103,16 @@ batch have been processed so far.
 
 Once extraction finishes you get a grid of every card — thumbnail, name,
 and its own token cost (`113 tok`) — plus a running **total tokens**
-counter above it, labeled `(exact, tiktoken)` or `(estimate)` depending on
-whether `tiktoken` is installed on the machine running the server. Checkboxes
-let you pick exactly which optional fields go into the export (tags,
-creator notes, alt greetings, lorebook, system prompt, post-history
-instructions — the six core fields are always included); toggling any of
-them, changing format, or changing `--full`/the per-field cap re-estimates
-the total and every per-card badge live, so you see the cost of each choice
+counter above it. A **Tokenizer** dropdown picks which model's tokenizer
+computes that count (Heuristic / DeepSeek / GLM / GPT — see "Token
+counting" above); the label next to the total shows `(exact)` or
+`(estimate - see title for why)`, and hovering it shows the full
+explanation (which tokenizer, or why it fell back). Checkboxes let you
+pick exactly which optional fields go into the export (tags, creator
+notes, alt greetings, lorebook, system prompt, post-history instructions —
+the six core fields are always included); toggling any of them, changing
+format/tokenizer, or changing `--full`/the per-field cap re-estimates the
+total and every per-card badge live, so you see the cost of each choice
 before exporting. Click the **×** on any tile to drop that card from the
 export entirely (it's removed from the total instantly, and won't be in
 the downloaded file) — useful for trimming a batch down to your actual
@@ -116,6 +140,9 @@ python3 bestcards.py ./my_cards -o cards_export.json --format json --full --fiel
 # Bring creator notes back in alongside tags (both off-by-default fields are opt-in)
 python3 bestcards.py ./my_cards -o cards_export.md --fields tags,creator_notes
 
+# Exact token count for DeepSeek (needs: pip install tokenizers huggingface_hub)
+python3 bestcards.py ./my_cards -o cards_export.md --tokenizer deepseek
+
 # Mix explicit files and folders
 python3 bestcards.py card1.png card2.png ./more_cards/
 
@@ -139,6 +166,7 @@ bestcards ./my_cards -o cards_export.md
 | `--fields LIST` | Comma-separated optional fields to include: `tags`, `creator_notes`, `system_prompt`, `post_history_instructions`, `alt_greetings`, `lorebook`. Also accepts `all` or `none`. Default: `tags`. (The six core fields are always included and aren't part of this list.) |
 | `--full` | Don't truncate included prose, and show full text for included list fields (alt_greetings, lorebook) instead of just a count. Independent of `--fields` — controls *how much* of what's included is shown, not *what's* included |
 | `--max-chars` | Per-field truncation cap in non-`--full` mode (default 600) |
+| `--tokenizer NAME` | `heuristic` (default) \| `deepseek` \| `glm` \| `gpt` \| any `org/repo` — see "Token counting" above |
 | `--no-recursive` | Only scan the top level of given folders |
 | `--sort` | Order cards by `name` (default) or `file` |
 | `--report-failures PATH` | Write a list of PNGs that had no card data |
@@ -169,5 +197,5 @@ pip install -e ".[dev]"
 pytest
 ```
 
-Optional: `pip install -e ".[tokens]"` (or just `pip install tiktoken`) to
-get exact token counts instead of the heuristic fallback.
+Optional: `pip install -e ".[tokens]"` for exact token counts (see "Token
+counting" above) instead of the heuristic fallback.

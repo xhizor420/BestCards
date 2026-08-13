@@ -21,4 +21,4 @@ cardpack = ["webui_static/*"]
 
 [project.optional-dependencies]
 dev = ["pytest"]
-tokens = ["tiktoken"]
+tokens = ["tiktoken", "tokenizers", "huggingface_hub"]

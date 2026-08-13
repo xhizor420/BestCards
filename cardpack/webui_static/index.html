@@ -56,6 +56,14 @@
           <option value="file">Source filename</option>
         </select>
       </label>
+      <label>Tokenizer (for the count below)
+        <select id="tokenizerSelect">
+          <option value="heuristic" selected>Heuristic (instant, no download)</option>
+          <option value="deepseek">DeepSeek (exact, downloads once)</option>
+          <option value="glm">GLM (exact, downloads once)</option>
+          <option value="gpt">GPT / tiktoken (exact, downloads once)</option>
+        </select>
+      </label>
       <label class="checkbox-label">
         <input type="checkbox" id="fullCheckbox">
         No truncation (show full text for everything included below, incl. full alt greetings / lorebook)

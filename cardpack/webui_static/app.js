@@ -19,6 +19,7 @@ const toggleFailuresBtn = document.getElementById("toggleFailuresBtn");
 const exportSection = document.getElementById("exportSection");
 const formatSelect = document.getElementById("formatSelect");
 const sortSelect = document.getElementById("sortSelect");
+const tokenizerSelect = document.getElementById("tokenizerSelect");
 const fullCheckbox = document.getElementById("fullCheckbox");
 const maxCharsLabel = document.getElementById("maxCharsLabel");
 const maxCharsInput = document.getElementById("maxCharsInput");
@@ -207,12 +208,16 @@ function currentExportOptions() {
     full: fullCheckbox.checked,
     max_chars: parseInt(maxCharsInput.value, 10) || 600,
     fields: fieldCheckboxes.filter((cb) => cb.checked).map((cb) => cb.value),
+    tokenizer: tokenizerSelect.value,
   };
 }
 
 function shortMethodLabel(method) {
   if (!method) return "";
-  return method.startsWith("tiktoken") ? "(exact, tiktoken)" : "(estimate)";
+  // A real tokenizer's label never starts with "heuristic"; a fallback
+  // (package missing, download blocked, unreachable network) always does,
+  // regardless of which one was requested - see cardpack/stats.py.
+  return method.startsWith("heuristic") ? "(estimate - see title for why)" : "(exact)";
 }
 
 async function refreshEstimate() {
@@ -333,6 +338,7 @@ fullCheckbox.addEventListener("change", () => {
 });
 formatSelect.addEventListener("change", refreshEstimate);
 sortSelect.addEventListener("change", refreshEstimate);
+tokenizerSelect.addEventListener("change", refreshEstimate);
 maxCharsInput.addEventListener("input", debouncedEstimate);
 fieldCheckboxes.forEach((cb) => cb.addEventListener("change", refreshEstimate));
 updateMaxCharsVisibility();

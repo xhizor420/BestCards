@@ -12,13 +12,28 @@ isn't a content pattern a model can learn from, so it's just token cost
 with no analytical payoff for this use case.
 
 Token counting: there is no single universal tokenizer — GPT, Claude,
-Llama, etc. all split text differently, so no number here is "exact" for
-every model. If the optional `tiktoken` package is installed (and can
-reach its one-time encoding-data download), we use it for a real BPE
-count that matches GPT-4/3.5 exactly and is a close proxy for most other
-modern BPE tokenizers, including Claude's. Otherwise we fall back to a
-word-aware heuristic. Every count is labeled with which method produced
-it so it's never presented as more precise than it is.
+GLM, DeepSeek, Llama, etc. all split text differently, so "the" token
+count doesn't exist independent of a target model. TOKENIZER_PRESETS
+below maps a short name to a real tokenizer for a few model families
+people actually target with exports from this tool:
+
+- "gpt" uses tiktoken's cl100k_base (exact for GPT-4/3.5).
+- "deepseek" / "glm" load that model family's real tokenizer.json from
+  the Hugging Face Hub via the `tokenizers` package (no torch/transformers
+  needed - just the tokenizer, not the model).
+
+Any of these requires the matching optional package AND, the first time
+a given tokenizer is used, a one-time network fetch to cache its data
+(tiktoken -> openaipublic's CDN, deepseek/glm -> huggingface.co). If the
+package isn't installed or the fetch can't complete (offline, restrictive
+proxy, gated repo), counting falls back to a word-aware heuristic rather
+than failing the export - but the returned method label always says
+plainly which one actually produced the number, including *why* it fell
+back, so it's never presented as more precise than it is.
+
+You aren't limited to the three presets: pass any "org/repo" Hugging Face
+model id as the tokenizer name and its tokenizer.json is used the same
+way as the deepseek/glm presets.
 """
 
 from __future__ import annotations
@@ -32,27 +47,75 @@ from .cardspec import Card
 
 _WORD_RE = re.compile(r"\S+")
 
-_tiktoken_encoder = "unchecked"  # sentinel; becomes an Encoding or None after first attempt
+TOKENIZER_PRESETS = {
+    "gpt": {"kind": "tiktoken", "key": "cl100k_base", "label": "tiktoken/cl100k_base (GPT-4/3.5-exact)"},
+    "deepseek": {"kind": "hf", "key": "deepseek-ai/DeepSeek-V3", "label": "deepseek-ai/DeepSeek-V3 tokenizer"},
+    "glm": {"kind": "hf", "key": "zai-org/GLM-4.5", "label": "zai-org/GLM-4.5 tokenizer"},
+}
+DEFAULT_TOKENIZER = "heuristic"
+
+_tokenizer_cache: dict[str, tuple[object | None, str | None]] = {}  # "{kind}:{key}" -> (encoder, failure_reason)
 
 
-def _get_tiktoken_encoder():
-    global _tiktoken_encoder
-    if _tiktoken_encoder == "unchecked":
-        try:
-            import tiktoken
+def _load_tiktoken(encoding: str) -> tuple[object | None, str | None]:
+    """Returns (encoder, failure_reason). failure_reason distinguishes the
+    package being missing from the (far more common) one-time data
+    download failing, so the fallback message can tell someone whether
+    `pip install` or a network/proxy issue is what's actually blocking
+    them."""
+    try:
+        import tiktoken
+    except ImportError:
+        return None, "`tiktoken` not installed (pip install tiktoken)"
+    try:
+        return tiktoken.get_encoding(encoding), None
+    except Exception as e:
+        return None, f"couldn't fetch its encoding data ({type(e).__name__}; usually offline/blocked network)"
 
-            _tiktoken_encoder = tiktoken.get_encoding("cl100k_base")
-        except Exception:
-            # Not installed, or (common in sandboxed/offline environments) its
-            # one-time BPE-ranks download couldn't reach openaipublic's CDN.
-            _tiktoken_encoder = None
-    return _tiktoken_encoder
+
+def _load_hf_tokenizer(repo_id: str) -> tuple[object | None, str | None]:
+    try:
+        from tokenizers import Tokenizer
+    except ImportError:
+        return None, "`tokenizers` not installed (pip install tokenizers huggingface_hub)"
+    try:
+        return Tokenizer.from_pretrained(repo_id), None
+    except Exception as e:
+        return None, f"couldn't fetch {repo_id}'s tokenizer.json ({type(e).__name__}; offline/blocked/gated repo)"
+
+
+def _resolve_backend(name: str) -> tuple[str, str | None, str]:
+    """name -> (kind, key, label). kind is "heuristic" | "tiktoken" | "hf"."""
+    if not name or name == "heuristic":
+        return "heuristic", None, "heuristic"
+    preset = TOKENIZER_PRESETS.get(name)
+    if preset:
+        return preset["kind"], preset["key"], preset["label"]
+    if "/" in name:  # a raw Hugging Face "org/repo" id
+        return "hf", name, f"{name} tokenizer"
+    return "heuristic", None, "heuristic"  # unrecognized name: don't raise, just fall back
+
+
+def _get_encoder(name: str) -> tuple[str, object | None, str]:
+    kind, key, label = _resolve_backend(name)
+    if kind == "heuristic":
+        return "heuristic", None, label
+
+    cache_key = f"{kind}:{key}"
+    if cache_key not in _tokenizer_cache:
+        loader = _load_tiktoken if kind == "tiktoken" else _load_hf_tokenizer
+        _tokenizer_cache[cache_key] = loader(key)
+    encoder, failure_reason = _tokenizer_cache[cache_key]
+
+    if encoder is None:
+        return "heuristic", None, f"heuristic - {label} unavailable: {failure_reason}"
+    return kind, encoder, label
 
 
 @dataclass(frozen=True)
 class TokenCount:
     count: int
-    method: str  # short label, safe to show in output: "tiktoken/cl100k_base" | "heuristic"
+    method: str
     exact: bool
 
 
@@ -71,14 +134,20 @@ def _heuristic_token_count(text: str) -> int:
     return max(by_words, by_chars, 1 if text.strip() else 0)
 
 
-def count_tokens(text: str) -> TokenCount:
-    encoder = _get_tiktoken_encoder()
-    if encoder is not None:
-        try:
-            return TokenCount(len(encoder.encode(text, disallowed_special=())), "tiktoken/cl100k_base", True)
-        except Exception:
-            pass  # fall through to heuristic if encoding this particular text fails
-    return TokenCount(_heuristic_token_count(text), "heuristic (~0.75 tok/word)", False)
+def count_tokens(text: str, tokenizer: str = DEFAULT_TOKENIZER) -> TokenCount:
+    kind, encoder, label = _get_encoder(tokenizer)
+    if encoder is None:
+        # _get_encoder already produced a label explaining why (plain
+        # "heuristic" for an explicit heuristic request, or a "heuristic -
+        # X unavailable (...)" explanation when a real tokenizer couldn't load)
+        method = "heuristic (~0.75 tok/word)" if label == "heuristic" else label
+        return TokenCount(_heuristic_token_count(text), method, False)
+    try:
+        if kind == "tiktoken":
+            return TokenCount(len(encoder.encode(text, disallowed_special=())), label, True)
+        return TokenCount(len(encoder.encode(text).ids), label, True)  # HF tokenizers.Tokenizer
+    except Exception:
+        return TokenCount(_heuristic_token_count(text), f"heuristic - {label} failed on this text", False)
 
 
 def build_corpus_stats(cards: Iterable[Card], *, include_tags: bool = True) -> dict:

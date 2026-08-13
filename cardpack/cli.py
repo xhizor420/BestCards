@@ -7,7 +7,7 @@ from pathlib import Path
 from .cardspec import Card, CardExtractionError, parse_card_payload
 from .formats import ALL_EXTRA_FIELDS, DEFAULT_EXTRA_FIELDS, WRITERS, normalize_extra_fields
 from .png_chunks import NotAPngError, read_text_chunks_from_file
-from .stats import count_tokens
+from .stats import TOKENIZER_PRESETS, count_tokens
 
 
 def _gather_png_paths(inputs: list[str], recursive: bool) -> list[Path]:
@@ -87,6 +87,17 @@ def build_parser() -> argparse.ArgumentParser:
         "specifically want them - opt in here.)",
     )
     parser.add_argument(
+        "--tokenizer",
+        default="heuristic",
+        metavar="NAME",
+        help="Tokenizer used for the token count printed/written with the export: "
+        f"{', '.join(TOKENIZER_PRESETS)}, 'heuristic' (default, no download), or any "
+        "Hugging Face 'org/repo' id (its tokenizer.json is used). Presets need one-time "
+        "network access on first use (tiktoken -> openaipublic's CDN, deepseek/glm -> "
+        "huggingface.co) and, for deepseek/glm, `pip install tokenizers huggingface_hub`. "
+        "Falls back to the heuristic (labeled as such) if unavailable.",
+    )
+    parser.add_argument(
         "--no-recursive",
         action="store_true",
         help="Only scan the top level of given folders instead of recursing into subfolders.",
@@ -132,7 +143,9 @@ def main(argv: list[str] | None = None) -> int:
 
     extra_fields = normalize_extra_fields(args.fields)
     writer = WRITERS[args.format]
-    output_text = writer(cards, full=args.full, max_chars=args.max_chars, extra_fields=extra_fields)
+    output_text = writer(
+        cards, full=args.full, max_chars=args.max_chars, extra_fields=extra_fields, tokenizer=args.tokenizer
+    )
     Path(args.output).write_text(output_text, encoding="utf-8")
 
     spec_counts: dict[str, int] = {}
@@ -140,7 +153,7 @@ def main(argv: list[str] | None = None) -> int:
         spec_counts[c.spec_version] = spec_counts.get(c.spec_version, 0) + 1
     spec_summary = ", ".join(f"v{v}: {n}" for v, n in sorted(spec_counts.items()))
 
-    tc = count_tokens(output_text)
+    tc = count_tokens(output_text, args.tokenizer)
 
     print(f"Scanned {len(png_paths)} PNG file(s).")
     print(f"Extracted {len(cards)} card(s) ({spec_summary}).")
@@ -148,8 +161,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Skipped {len(failures)} file(s) with no usable card data.")
     print(f"Wrote {args.format} export to {args.output}")
     print(f"{tc.count:,} tokens ({tc.method})")
-    if not tc.exact:
-        print("  (install tiktoken for an exact GPT-4/3.5-style count: pip install tiktoken)")
+    if not tc.exact and args.tokenizer != "heuristic":
+        print("  (fell back to the heuristic - see the message above for why)")
+    elif not tc.exact:
+        print("  (pass --tokenizer deepseek|glm|gpt for an exact count; see --help for details)")
 
     if args.report_failures and failures:
         report_lines = [f"{path}: {reason}" for path, reason in failures]

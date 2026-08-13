@@ -8,7 +8,8 @@ serves a single-page app and two JSON endpoints:
 
   POST /api/export                    body = JSON
       {"cards": [...], "format": "md"|"compact"|"json", "full": bool,
-       "max_chars": int, "sort": "name"|"file", "fields": ["tags", ...]}
+       "max_chars": int, "sort": "name"|"file", "fields": ["tags", ...],
+       "tokenizer": "heuristic"|"gpt"|"deepseek"|"glm"|"org/repo"}
       -> {"filename": "...", "content": "..."}
 
   POST /api/estimate                  body = JSON (same shape as /api/export
@@ -119,6 +120,7 @@ class Handler(BaseHTTPRequestHandler):
             max_chars = payload.get("max_chars", 600)
             sort_key = payload.get("sort", "name")
             fields = payload.get("fields", ["tags"])
+            tokenizer = payload.get("tokenizer", "heuristic")
 
             cards = [Card.from_dict(d) for d in payload.get("cards", [])]
             if sort_key == "name":
@@ -126,7 +128,7 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 cards.sort(key=lambda c: c.source_file)
 
-            content = WRITERS[fmt](cards, full=full, max_chars=max_chars, extra_fields=fields)
+            content = WRITERS[fmt](cards, full=full, max_chars=max_chars, extra_fields=fields, tokenizer=tokenizer)
             filename = f"cards_export.{_EXTENSIONS[fmt]}"
             self._send_json(200, {"filename": filename, "content": content})
         except Exception as e:  # noqa: BLE001
@@ -142,8 +144,12 @@ class Handler(BaseHTTPRequestHandler):
             full = bool(payload.get("full", False))
             max_chars = payload.get("max_chars", 600)
             fields = payload.get("fields", ["tags"])
+            tokenizer = payload.get("tokenizer", "heuristic")
             cards = [Card.from_dict(d) for d in payload.get("cards", [])]
-            self._send_json(200, estimate_export(cards, format=fmt, full=full, max_chars=max_chars, extra_fields=fields))
+            result = estimate_export(
+                cards, format=fmt, full=full, max_chars=max_chars, extra_fields=fields, tokenizer=tokenizer
+            )
+            self._send_json(200, result)
         except Exception as e:  # noqa: BLE001
             self._send_json(400, {"error": str(e)})
 
