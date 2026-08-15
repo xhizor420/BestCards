@@ -102,6 +102,57 @@ mixed corpus simply gets no house-style section and a generic
 placeholder, rather than confident-sounding claims drawn from one or two
 examples.
 
+#### Document structure, not just inline formatting
+
+The bigger determinant of whether output looks like your corpus is the
+structure *inside* a field. Real high-quality cards routinely pack an
+entire structured dossier into `description` — `>Appearance`,
+`>Personality`, `>Backstory` section headers with `+ ` bullet lines,
+wrapped in `<Name>…</Name>` tags, with a separate `<NPC>` block for side
+characters — while leaving the spec's own `personality` field empty. A
+template rendering `Description: <appearance, background, key facts>` as
+a one-liner teaches a model to throw all of that away.
+
+So that structure is detected too, and the `Description:` slot in the
+template is filled with a skeleton built from your corpus's *actual*
+section names, in the order they typically appear:
+
+```
+Description:
+<Name>
+>Appearance
++ <specific, concrete detail>
++ <more detail — several bullets per section>
+>Personality
++ <specific, concrete detail>
+...
+</Name>
+```
+
+The house-style block also states the median description length outright
+("about 9,157 characters — a few short paragraphs is nowhere near it"),
+because matching the corpus's *depth* is most of what separates a card
+that feels like the references from a thin sketch.
+
+### Field coverage — what your corpus can't teach
+
+Every export reports which fields your cards actually populate:
+
+```
+- Field coverage: description 10/10, personality 0/10, scenario 9/10,
+  first_mes 10/10, mes_example 0/10, tags 0/10
+```
+
+This matters a lot. A corpus where **no** card fills `mes_example` cannot
+teach a model to write one — so if generated example dialogue comes back
+weak, that line tells you why immediately. Rather than silently demanding
+a field it never demonstrates, the export says so plainly to the model
+too ("No card in this corpus fills the separate `Example Dialogue` field
+(0/10) — so there is no house style here to copy for it"), and instructs
+it to write the field anyway using the conventions that *were* observed.
+It's also the signal you need to decide whether to add cards that do
+carry that field.
+
 Six fields are always present for every card (truncated per `--max-chars`,
 never dropped, unless `--full`): **name, description, personality,
 scenario, first_mes, mes_example**. Everything else is opt-in and off by

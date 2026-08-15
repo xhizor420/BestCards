@@ -44,7 +44,14 @@ import os
 from typing import Iterable
 
 from .cardspec import Card
-from .conventions import analyze_conventions, build_convention_lines, build_example_dialogue_sample
+from .conventions import (
+    analyze_conventions,
+    build_absent_core_fields,
+    build_convention_lines,
+    build_coverage_notes,
+    build_description_skeleton,
+    build_example_dialogue_sample,
+)
 from .stats import DEFAULT_TOKENIZER, build_corpus_stats, count_tokens, format_stats_block
 
 # Fields whose text can be huge relative to how useful they are for
@@ -56,6 +63,19 @@ _DEFAULT_MAX_CHARS = 600
 # everything else (including creator_notes) is opt-in.
 ALL_EXTRA_FIELDS = ("tags", "creator_notes", "system_prompt", "post_history_instructions", "alt_greetings", "lorebook")
 DEFAULT_EXTRA_FIELDS = frozenset({"tags"})
+
+# Shown in the stats block so it's immediately visible which fields the
+# corpus actually populates - a corpus with mes_example 0/10 cannot teach
+# a model to write one, and that's worth knowing before wondering why the
+# generated card's example dialogue is weak.
+_COVERAGE_LABELS = (
+    ("description", "description"),
+    ("personality", "personality"),
+    ("scenario", "scenario"),
+    ("first_mes", "first_mes"),
+    ("mes_example", "mes_example"),
+    ("tags", "tags"),
+)
 
 _CORPUS_PREAMBLE = (
     "This file is a REFERENCE CORPUS of {n} separate, existing character cards, "
@@ -118,6 +138,9 @@ def _build_response_template_md(cards: list[Card]) -> str:
     # to "nest" under the field label would teach an indentation the
     # corpus doesn't actually use.
     example_block = build_example_dialogue_sample(conv)
+    description_block = build_description_skeleton(conv)
+    coverage_notes = build_coverage_notes(conv)
+    absent = build_absent_core_fields(conv)
 
     house_style = ""
     if convention_lines:
@@ -126,6 +149,26 @@ def _build_response_template_md(cards: list[Card]) -> str:
             "These are measured from the cards above, not general advice. Match them:\n\n"
             + "\n".join(convention_lines)
             + "\n"
+        )
+
+    coverage = ""
+    if coverage_notes:
+        coverage = (
+            "\n### What this corpus does NOT show you\n\n"
+            + "\n".join(coverage_notes)
+            + "\n\nStill fill those fields in for the new character — just take the "
+            "conventions above (voice, formatting, level of detail) and apply them, "
+            "since there is no example here to copy from.\n"
+        )
+
+    absent_note = ""
+    if absent:
+        absent_note = (
+            f"\n(Note: {', '.join(absent)} "
+            f"{'is' if len(absent) == 1 else 'are'} empty in every card above, so the "
+            f"reference material can't show you {'it' if len(absent) == 1 else 'them'} — "
+            f"write {'it' if len(absent) == 1 else 'them'} anyway, in the same voice and "
+            f"formatting conventions as the rest.)\n"
         )
 
     return f"""## ▼ REQUIRED RESPONSE FORMAT — follow this exactly ▼
@@ -141,13 +184,16 @@ cards, it is not part of a single card.
 Every one of the six fields is required. Do not skip, rename, merge, or
 reorder them, and do not leave any as a one-line placeholder — Example
 Dialogue in particular must be a real, fully written exchange in the
-format shown below, not a description of one.
-{house_style}
+format shown below, not a description of one. Match the DEPTH of the
+cards above: they are detailed, specific, and long. A thin sketch is a
+failed answer.
+{house_style}{coverage}
 ### The exact format to output
-
+{absent_note}
 Name: <character name>
 
-Description: <appearance, background, key facts>
+Description:
+{description_block}
 
 Personality: <personality traits, quirks, how they typically act>
 
@@ -171,6 +217,8 @@ def _build_response_template_compact(cards: list[Card]) -> str:
     conv = analyze_conventions(cards)
     convention_lines = build_convention_lines(conv)
     example_sample = build_example_dialogue_sample(conv)
+    description_block = build_description_skeleton(conv)
+    coverage_notes = build_coverage_notes(conv)
 
     parts = [
         "=== REQUIRED RESPONSE FORMAT — follow this exactly ===",
@@ -181,16 +229,24 @@ def _build_response_template_compact(cards: list[Card]) -> str:
         "— that wrapper holds many reference cards, it is not part of a single card. "
         "All six fields are required: do not skip, rename, merge, or reorder them, "
         "and do not leave any as a one-line placeholder — Example Dialogue must be "
-        "a real, fully written exchange in the format shown, not a description of one.",
+        "a real, fully written exchange in the format shown, not a description of one. "
+        "Match the DEPTH of the cards above: they are detailed, specific and long. "
+        "A thin sketch is a failed answer.",
     ]
     if convention_lines:
         parts.append(
             "House style measured from the cards above — match it:\n" + "\n".join(convention_lines)
         )
+    if coverage_notes:
+        parts.append(
+            "What this corpus does NOT show you:\n"
+            + "\n".join(coverage_notes)
+            + "\nStill fill those fields in, applying the conventions above."
+        )
     parts.append(
         "Format to output:\n\n"
         "Name: <character name>\n\n"
-        "Description: <appearance, background, key facts>\n\n"
+        f"Description:\n{description_block}\n\n"
         "Personality: <traits, quirks, how they act>\n\n"
         "Scenario: <the setting or situation>\n\n"
         "First Message: <the character's opening message>\n\n"
@@ -297,6 +353,10 @@ def to_markdown(
     lines.append("")
     lines.append("## Corpus Stats")
     lines.append(format_stats_block(build_corpus_stats(cards, include_tags="tags" in extra_fields)))
+    coverage = analyze_conventions(cards)["field_coverage"]
+    if cards:
+        filled = ", ".join(f"{name} {coverage.get(key, 0)}/{len(cards)}" for key, name in _COVERAGE_LABELS)
+        lines.append(f"- Field coverage: {filled}")
     lines.append("")
     for i, card in enumerate(cards, 1):
         lines.extend(_markdown_card_lines(i, len(cards), card, cap, extra_fields=extra_fields))
@@ -444,10 +504,18 @@ def to_json(
 ) -> str:
     cards = list(cards)
     extra_fields = normalize_extra_fields(extra_fields)
+    _analysis = analyze_conventions(cards)
+    _conv = {
+        "house_style": build_convention_lines(_analysis),
+        "description_format": build_description_skeleton(_analysis),
+        "mes_example_format": build_example_dialogue_sample(_analysis),
+        "coverage_notes": build_coverage_notes(_analysis),
+    }
     payload = {
         "note": _CORPUS_PREAMBLE.format(n=len(cards)),
         "count": len(cards),
         "stats": build_corpus_stats(cards, include_tags="tags" in extra_fields),
+        "field_coverage": _analysis["field_coverage"],
         "cards": [card_to_dict(c, full=full, max_chars=max_chars, extra_fields=extra_fields) for c in cards],
         # Placed after "cards" (not in "note") so it's the last thing read
         # before responding - see _build_response_template_md's comment above.
@@ -469,8 +537,10 @@ def to_json(
             "fields": ["name", "description", "personality", "scenario", "first_mes", "mes_example"],
             # Measured from these cards (see conventions.py), so the model
             # can match the corpus's real formatting instead of guessing.
-            "house_style": build_convention_lines(analyze_conventions(cards)),
-            "mes_example_format": build_example_dialogue_sample(analyze_conventions(cards)),
+            "house_style": _conv["house_style"],
+            "description_format": _conv["description_format"],
+            "mes_example_format": _conv["mes_example_format"],
+            "not_demonstrated_by_this_corpus": _conv["coverage_notes"],
         },
     }
     # Counted over the whole payload including response_template, so this

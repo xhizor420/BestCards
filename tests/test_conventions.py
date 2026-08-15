@@ -1,7 +1,10 @@
 from cardpack.cardspec import Card
 from cardpack.conventions import (
     analyze_conventions,
+    build_absent_core_fields,
     build_convention_lines,
+    build_coverage_notes,
+    build_description_skeleton,
     build_example_dialogue_sample,
 )
 
@@ -98,3 +101,101 @@ def test_empty_corpus_is_safe():
     assert conv["total_cards"] == 0
     assert build_convention_lines(conv) == []
     assert build_example_dialogue_sample(conv)
+
+
+# --- document structure inside `description` -----------------------------
+# Real high-quality cards pack a structured dossier into `description`
+# (">Appearance" headers, "+ " bullets, "<Name>" wrappers) and leave the
+# spec's own `personality`/`mes_example` fields empty. Rendering
+# "Description: <appearance, background, key facts>" as a one-liner taught
+# models to throw all that away.
+
+_DOSSIER = """<Aria>
+>Appearance
++ 165cm, dark hair, green eyes.
++ Wears oversized shirts.
+>Personality
++ Introverted but teasing once comfortable.
+>Backstory
++ Grew up in a coastal town.
+</Aria>"""
+
+
+def _dossier_corpus(n=5):
+    return [_card(name=f"C{i}", description=_DOSSIER, first_mes="Hello there.") for i in range(n)]
+
+
+def test_detects_section_headers_bullets_and_xml_blocks():
+    conv = analyze_conventions(_dossier_corpus())
+    assert conv["section_header_cards"] == 5
+    assert conv["plus_bullet_cards"] == 5
+    assert conv["xml_block_cards"] == 5
+    names = [n for n, _c, _p in conv["section_names"]]
+    assert names == ["Appearance", "Personality", "Backstory"]  # corpus order, not frequency order
+
+
+def test_convention_lines_describe_the_dossier_structure():
+    joined = "\n".join(build_convention_lines(analyze_conventions(_dossier_corpus())))
+    assert "STRUCTURED DOSSIER" in joined
+    assert ">Appearance" in joined and ">Backstory" in joined
+    assert "+ " in joined
+    assert "<Name>" in joined
+
+
+def test_description_skeleton_mirrors_real_sections():
+    skeleton = build_description_skeleton(analyze_conventions(_dossier_corpus()))
+    assert skeleton.startswith("<Name>")
+    for section in (">Appearance", ">Personality", ">Backstory"):
+        assert section in skeleton
+    assert "+ <specific, concrete detail>" in skeleton
+    assert skeleton.rstrip().endswith("</Name>")
+
+
+def test_description_skeleton_stays_generic_without_structure():
+    plain = [_card(name=f"C{i}", description="Just a plain prose description.") for i in range(5)]
+    skeleton = build_description_skeleton(analyze_conventions(plain))
+    assert ">Appearance" not in skeleton
+    assert skeleton.startswith("<")
+
+
+def test_minority_dossier_structure_is_not_reported():
+    cards = [_card(name="A", description=_DOSSIER)]
+    cards += [_card(name=f"B{i}", description="Plain prose only.") for i in range(4)]
+    joined = "\n".join(build_convention_lines(analyze_conventions(cards)))
+    assert "STRUCTURED DOSSIER" not in joined
+
+
+# --- field coverage ------------------------------------------------------
+
+def test_field_coverage_counts_populated_fields():
+    cards = _dossier_corpus()  # description + first_mes only
+    coverage = analyze_conventions(cards)["field_coverage"]
+    assert coverage["description"] == 5
+    assert coverage["first_mes"] == 5
+    assert coverage["personality"] == 0
+    assert coverage["mes_example"] == 0
+    assert coverage["tags"] == 0
+
+
+def test_coverage_notes_flag_fields_the_corpus_cannot_teach():
+    notes = "\n".join(build_coverage_notes(analyze_conventions(_dossier_corpus())))
+    assert "Personality" in notes and "0/5" in notes
+    assert "Example Dialogue" in notes
+    assert "tags" in notes
+
+
+def test_absent_core_fields_lists_empty_template_labels():
+    absent = build_absent_core_fields(analyze_conventions(_dossier_corpus()))
+    assert "Personality" in absent
+    assert "Example Dialogue" in absent
+    assert "Description" not in absent
+
+
+def test_no_coverage_notes_when_every_field_is_populated():
+    cards = _corpus_with_full_conventions()
+    for c in cards:
+        c.personality = "Curious and guarded."
+        c.scenario = "A rain-soaked tavern."
+        c.tags = ["fantasy"]
+    assert build_coverage_notes(analyze_conventions(cards)) == []
+    assert build_absent_core_fields(analyze_conventions(cards)) == []
