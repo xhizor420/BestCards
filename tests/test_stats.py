@@ -102,3 +102,23 @@ def test_format_stats_block_omits_bloat_line_when_nothing_removed():
     stats = build_corpus_stats([_card()])
     block = format_stats_block(stats)
     assert "stripped" not in block.lower()
+
+
+def test_stats_report_the_solo_group_mix():
+    # Both shapes belong in the corpus, so the summary names the split
+    # instead of treating group cards as outliers to explain away.
+    cards = [_card(name="Aria"), _card(name="Zed"), _card(name="Kate & Andrew")]
+    stats = build_corpus_stats(cards)
+    assert stats["single_character_cards"] == 2
+    assert stats["multi_character_cards"] == 1
+
+    block = format_stats_block(stats)
+    assert "2 built around a single character" in block
+    assert "1 built around a group" in block
+    assert "cast=solo:2,group:1" in format_stats_block(stats, compact=True)
+
+
+def test_stats_skip_the_cast_line_when_every_card_is_the_same_shape():
+    stats = build_corpus_stats([_card(name="Aria"), _card(name="Zed")])
+    assert "built around a group" not in format_stats_block(stats)
+    assert "cast=" not in format_stats_block(stats, compact=True)

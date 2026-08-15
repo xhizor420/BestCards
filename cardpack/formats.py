@@ -46,6 +46,7 @@ from typing import Iterable
 from .cardspec import Card
 from .conventions import (
     analyze_conventions,
+    build_cast_note,
     build_convention_lines,
     build_coverage_notes,
     build_description_skeleton,
@@ -190,6 +191,11 @@ def _build_response_template_md(cards: list[Card]) -> str:
         house_style += (
             "\n### The scale these cards work at\n\n" + "\n".join(style["scale"]) + "\n"
         )
+    cast_note = build_cast_note(conv)
+    if cast_note:
+        house_style += (
+            "\n### Solo cards and group cards\n\n" + "\n".join(cast_note) + "\n"
+        )
     # Point at the clearest worked examples rather than leaving a reader to
     # rank 50+ cards itself - the top-scoring cards are the ones that show
     # the recommended structure most completely.
@@ -304,6 +310,9 @@ def _build_response_template_compact(cards: list[Card]) -> str:
         )
     if style["scale"]:
         parts.append("The scale these cards work at:\n" + "\n".join(style["scale"]))
+    _cast_note = build_cast_note(conv)
+    if _cast_note:
+        parts.append("Solo cards and group cards:\n" + "\n".join(_cast_note))
     _exemplars = exemplar_names(cards)
     if len(_exemplars) >= 2:
         parts.append(

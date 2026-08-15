@@ -95,9 +95,10 @@ def test_exemplar_names_skip_worthless_cards():
 
 
 # --- pinning --------------------------------------------------------------
-# Ranking has a real blind spot: group cards are longer with more sections,
-# so they crowd the full-depth tier even when the reader wants one
-# character. The curator knows their corpus better than the score does.
+# Group cards are longer with more sections because they hold more
+# characters, so they tend to lead the full-depth tier - correct behaviour,
+# not a defect. What the score can't know is whether the reader is about to
+# write a solo card or a group one, so the curator gets the override.
 
 def _named(name, path):
     return _card(name=name, description=_DOSSIER, source_file=path)

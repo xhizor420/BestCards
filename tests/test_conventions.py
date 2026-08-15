@@ -2,6 +2,7 @@ from cardpack.cardspec import Card
 from cardpack.conventions import (
     analyze_conventions,
     build_absent_core_fields,
+    build_cast_note,
     build_convention_lines,
     build_coverage_notes,
     build_description_skeleton,
@@ -315,3 +316,45 @@ def test_optional_touches_are_not_listed_as_structural_alternatives():
     assert "Structured dossier" in approaches
     assert "backticks" not in approaches
     assert "backticks" in touches
+
+
+# --- solo vs group cast ---------------------------------------------------
+# The corpus deliberately holds both shapes. A card is multi-character when
+# it has an <NPC> block or a name joining several characters; group cards
+# are longer because they hold more characters, which is the format working.
+
+
+def test_detects_group_cards_by_npc_block_and_by_name():
+    cards = [
+        _card(name="Aria"),
+        _card(name="Susan & Sera"),
+        _card(name="Kate and Andrew"),
+        _card(name="The Hale Family"),
+        _card(name="Rowan", description="<Rowan>\n>Appearance\n+ tall\n</Rowan>\n<NPC>\n<Mira> her sister </Mira>\n</NPC>"),
+    ]
+    conv = analyze_conventions(cards)
+    assert conv["total_cards"] == 5
+    assert conv["multi_character_cards"] == 4
+
+
+def test_solo_names_are_not_mistaken_for_groups():
+    # A one-word name, and one that merely contains the letters "and".
+    cards = [_card(name="Aria"), _card(name="Alexander"), _card(name="Sandy")]
+    assert analyze_conventions(cards)["multi_character_cards"] == 0
+
+
+def test_cast_note_names_both_shapes_and_defends_group_length():
+    cards = _dossier_corpus() + [_card(name="Susan & Sera", description=_DOSSIER)]
+    note = "\n".join(build_cast_note(analyze_conventions(cards)))
+    assert "single character" in note
+    assert "cast" in note
+    # Length is explained, never prescribed - a group card is long because
+    # it holds a group, so neither shape should be nudged toward the other.
+    assert "don't pad" in note
+    assert "Follow whichever matches" in note
+
+
+def test_cast_note_is_silent_when_the_corpus_is_all_one_shape():
+    assert build_cast_note(analyze_conventions(_dossier_corpus())) == []
+    groups = [_card(name=f"A{i} & B{i}") for i in range(5)]
+    assert build_cast_note(analyze_conventions(groups)) == []

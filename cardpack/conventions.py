@@ -93,6 +93,11 @@ _PLUS_BULLET_RE = re.compile(r"^\+[ \t]+\S", re.MULTILINE)
 # <Audrey> ... </Audrey> style wrappers, and <NPC> side-character blocks.
 _XML_BLOCK_RE = re.compile(r"<([A-Za-z][A-Za-z0-9_ ]{0,30})>")
 _NPC_BLOCK_RE = re.compile(r"<NPC>", re.IGNORECASE)
+# A card covering more than one character: an explicit <NPC> block, or a
+# name joining several ("Susan & Sera", "Kate and Andrew", "Hero Family").
+# Group cards are longer because they carry more characters - that is the
+# format working as intended, not noise to correct for.
+_GROUP_NAME_RE = re.compile(r"\s(?:&|\+|and)\s|,|\bfamily\b|\btwins\b|\bsisters\b|\bbrothers\b", re.IGNORECASE)
 _INSTRUCTIONS_BLOCK_RE = re.compile(r"<instructions>", re.IGNORECASE)
 # A leading status/header line like "11:12 PM | August 6 | 11°C Raining | Apartment Hallway"
 _STATUS_LINE_RE = re.compile(r"^[^\n|]{1,60}\|[^\n|]{1,60}\|[^\n]{1,120}$")
@@ -107,6 +112,23 @@ _CORE_FIELD_LABELS = {
     "first_mes": "First Message",
     "mes_example": "Example Dialogue",
 }
+
+
+def is_multi_character(card: Card) -> bool:
+    """True when a card carries a cast rather than one character.
+
+    Detected two ways: an explicit `<NPC>` block in the description, or a
+    name that joins several ("Susan & Sera", "Kate and Andrew", "The Hale
+    Family"). Both are conservative - a group card written as plain prose
+    under a single name reads as solo here, which is the safe direction to
+    be wrong in.
+
+    This exists to REPORT the corpus's mix, never to filter it. Group
+    cards are longer because they carry more characters; that is the
+    format doing its job, and both kinds are worth keeping in the export
+    so a solo request and a group request each have something to follow.
+    """
+    return bool(_NPC_BLOCK_RE.search(card.description) or _GROUP_NAME_RE.search(card.name or ""))
 
 
 def _share(matching: int, total: int) -> float:
@@ -132,6 +154,14 @@ def _count_share(matching: int, total: int) -> str:
     """"11 of 43 cards (26%)" - the real count alongside the share, so a
     minority reads as the minority it is."""
     return f"{matching} of {total} cards ({_pct(matching, total)}%)"
+
+
+def _cards(n: int) -> str:
+    return "card" if n == 1 else "cards"
+
+
+def _verb(n: int) -> str:
+    return "gives" if n == 1 else "give"
 
 
 def _pct(matching: int, total: int) -> int:
@@ -196,6 +226,8 @@ def analyze_conventions(cards: Iterable[Card]) -> dict:
         if found:
             per_card_sections.append(found)
 
+    multi_character = sum(1 for c in cards if is_multi_character(c))
+
     field_coverage = {
         f: sum(1 for c in cards if str(getattr(c, f, "") or "").strip()) for f in CORE_FIELDS
     }
@@ -203,6 +235,7 @@ def analyze_conventions(cards: Iterable[Card]) -> dict:
 
     return {
         "total_cards": len(cards),
+        "multi_character_cards": multi_character,
         "cards_with_example": len(with_example),
         "cards_with_first_mes": len(with_first_mes),
         "cards_with_description": len(with_description),
@@ -386,6 +419,44 @@ def build_style_sections(conv: dict) -> dict:
         )
 
     return {"shared": shared, "approaches": approaches, "touches": touches, "scale": scale}
+
+
+def build_cast_note(conv: dict) -> list[str]:
+    """Tell the reader the corpus holds BOTH solo and group cards.
+
+    Without this, a model reading 45 solo cards and 12 group ones tends to
+    average them: it writes a solo card when asked for a group, or bolts a
+    stray sidekick onto a solo request. Both shapes are demonstrated here
+    on purpose, so name them and say to follow whichever the request asks
+    for. Notably this is not a length instruction - a group card is longer
+    because it carries more characters, which is the format working, not
+    padding to imitate or trim.
+    """
+    total = conv["total_cards"]
+    multi = conv["multi_character_cards"]
+    if total < _MIN_CARDS or multi == 0 or multi == total:
+        # Nothing to choose between - one shape, no guidance to give.
+        return []
+
+    solo = total - multi
+    lines = [
+        f"- This corpus demonstrates both shapes: {solo} {_cards(solo)} built around a single "
+        f"character, and {multi} built around a cast. Follow whichever matches what's "
+        f"being asked for — write a solo card for a solo request, a group card for a "
+        f"group one — rather than splitting the difference.",
+        "- Group cards run longer than solo ones here, and that's the format working: "
+        "more characters means more to describe. Length follows the cast and the "
+        "concept, so don't pad a solo card toward the group ones or trim a group card "
+        "toward the solo ones.",
+    ]
+    npc = conv["npc_block_cards"]
+    if npc:
+        lines.append(
+            f"- For side characters specifically, {npc} {_cards(npc)} here {_verb(npc)} each one "
+            f"its own `<NPC>` block after the main character's dossier, written in the same "
+            f"structure — that's the pattern to follow when a card needs a supporting cast."
+        )
+    return lines
 
 
 def build_convention_lines(conv: dict) -> list[str]:

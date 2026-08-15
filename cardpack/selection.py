@@ -95,15 +95,19 @@ def exemplar_names(cards: list[Card], n: int = 3) -> list[str]:
 def apply_pins(cards: list[Card], pinned_files: list[str] | None) -> list[Card]:
     """Move explicitly pinned cards to the front, keeping relative order.
 
-    Ranking is a heuristic, and it has a real blind spot: group cards are
-    naturally longer with more sections, so they crowd the top of the
-    ranking and therefore the full-depth tier. On a real corpus 5 of the
-    top 10 were multi-character cards, which skews the clearest worked
-    examples toward groups even when the reader wants one character.
+    Ranking is a heuristic and it can only see the page. Group cards carry
+    more characters, so they run longer with more sections and tend to lead
+    the ranking - on a real corpus 5 of the top 10 were multi-character.
+    That's not a fault to correct: group cards are long because they hold a
+    group, and the export deliberately keeps both kinds so a solo request
+    and a group request each have something to follow.
 
-    The person who curated the corpus knows which cards are their best
-    far better than a score does, so pinning overrides it - pinned cards
-    lead the export and fill the untrimmed tier first.
+    What the score genuinely cannot know is which shape the reader is
+    about to write. Someone building a solo card may want solo cards in
+    the full-depth tier; someone building an ensemble may want the
+    opposite. The person who curated the corpus knows that, so pinning
+    overrides the score - pinned cards lead the export and fill the
+    untrimmed tier first.
     """
     if not pinned_files:
         return cards

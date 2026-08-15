@@ -44,6 +44,7 @@ from dataclasses import dataclass
 from typing import Iterable
 
 from .cardspec import Card
+from .conventions import is_multi_character
 
 _WORD_RE = re.compile(r"\S+")
 
@@ -161,8 +162,11 @@ def build_corpus_stats(cards: Iterable[Card], *, include_tags: bool = True) -> d
     desc_lengths = []
     total_bloat_removed = 0
     cards_with_bloat = 0
+    multi_character = 0
     bloat_by_card: list[tuple[str, int]] = []
     for c in cards:
+        if is_multi_character(c):
+            multi_character += 1
         if include_tags:
             tag_counts.update(t.strip().lower() for t in c.tags if t.strip())
         spec_counts[c.spec_version] += 1
@@ -176,6 +180,8 @@ def build_corpus_stats(cards: Iterable[Card], *, include_tags: bool = True) -> d
 
     return {
         "count": len(cards),
+        "multi_character_cards": multi_character,
+        "single_character_cards": len(cards) - multi_character,
         "spec_versions": dict(sorted(spec_counts.items())),
         "top_tags": tag_counts.most_common(20),
         "avg_description_chars": round(sum(desc_lengths) / len(desc_lengths)) if desc_lengths else 0,
@@ -191,6 +197,10 @@ def build_corpus_stats(cards: Iterable[Card], *, include_tags: bool = True) -> d
 def format_stats_block(stats: dict, *, compact: bool = False) -> str:
     if compact:
         parts = [f"n={stats['count']}"]
+        if stats["multi_character_cards"] and stats["single_character_cards"]:
+            parts.append(
+                f"cast=solo:{stats['single_character_cards']},group:{stats['multi_character_cards']}"
+            )
         if stats["spec_versions"]:
             parts.append("spec=" + ",".join(f"v{v}:{n}" for v, n in stats["spec_versions"].items()))
         if stats["top_tags"]:
@@ -208,6 +218,12 @@ def format_stats_block(stats: dict, *, compact: bool = False) -> str:
         return " | ".join(parts)
 
     lines = [f"- Cards: {stats['count']}"]
+    if stats["multi_character_cards"] and stats["single_character_cards"]:
+        lines.append(
+            f"- Cast: {stats['single_character_cards']} built around a single character, "
+            f"{stats['multi_character_cards']} built around a group — both shapes are here on "
+            f"purpose, so there's a model to follow whichever kind is asked for."
+        )
     if stats["spec_versions"]:
         versions = ", ".join(f"v{v}: {n}" for v, n in stats["spec_versions"].items())
         lines.append(f"- Spec versions: {versions}")

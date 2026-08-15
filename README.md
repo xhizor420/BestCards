@@ -176,6 +176,35 @@ A structure also survives corpus growth: it qualifies on absolute count
 (≥5 cards) as well as share, so a coherent style held by a fixed set of
 cards isn't discarded just because you added unrelated cards around it.
 
+#### Solo cards and group cards, side by side
+
+Most corpora hold both — on a real 57-card one, 45 are built around a
+single character and 12 around a cast (`Kate & Andrew`, `Hero Family`,
+`Lindsay, Tori, Jazmine & Sabrina`). Left unsaid, a model averages them:
+it writes a solo card when you asked for a group, or bolts a stray
+sidekick onto a solo request.
+
+So the export names the split, in the stats block and again in the
+template:
+
+> This corpus demonstrates both shapes: 45 cards built around a single
+> character, and 12 built around a cast. Follow whichever matches what's
+> being asked for — write a solo card for a solo request, a group card
+> for a group one — rather than splitting the difference.
+>
+> Group cards run longer than solo ones here, and that's the format
+> working: more characters means more to describe. Length follows the
+> cast and the concept, so don't pad a solo card toward the group ones
+> or trim a group card toward the solo ones.
+
+Detection is deliberately conservative — an explicit `<NPC>` block, or a
+name joining several characters — so a group card written as prose under
+one name reads as solo rather than the other way round. It is only ever
+used to *report* the mix; neither shape is filtered, trimmed, or
+down-ranked for being what it is. Where the corpus does use `<NPC>`
+blocks for side characters, the template points at that as the pattern
+to follow for a group.
+
 ### Depth *and* breadth — how a 100+ card corpus stays usable
 
 A flat truncation cap forces a false choice. Measured on a real 57-card
@@ -207,12 +236,15 @@ short:
 
 #### Choosing which cards get full depth
 
-Ranking is a heuristic with a known blind spot: **group cards are longer
-and have more sections, so they crowd the top**. On a real 57-card corpus
-5 of the top 10 were multi-character cards — which skews the clearest
-worked examples toward groups even when you want one character.
+Group cards carry more characters, so they run longer with more sections
+and tend to lead the ranking — on a real 57-card corpus 5 of the top 10
+were multi-character. That's the format working, not a flaw: a group card
+is long because it holds a group. Both kinds stay in the export, and the
+template says so explicitly, so the model has a solo pattern to follow for
+a solo request and a group pattern for a group one.
 
-You curated the corpus, so you overrule it: click the **☆** on any card
+What the score can't know is which of the two *you're* about to write. You
+curated the corpus, so you overrule it: click the **☆** on any card
 in the UI to pin it. Pinned cards lead the export and fill the
 full-depth tier first. Each tile shows whether it's currently **shown in
 full** or **trimmed**, so the tier is never a guess.
