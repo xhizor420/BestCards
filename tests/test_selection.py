@@ -1,5 +1,5 @@
 from cardpack.cardspec import Card
-from cardpack.selection import exemplar_names, rank_cards, score_card, select_best
+from cardpack.selection import apply_pins, exemplar_names, rank_cards, score_card, select_best
 
 _DOSSIER = """<Aria>
 >Appearance
@@ -92,3 +92,33 @@ def test_exemplar_names_point_at_the_clearest_examples():
 
 def test_exemplar_names_skip_worthless_cards():
     assert exemplar_names([_card(name="Empty")], n=3) == []
+
+
+# --- pinning --------------------------------------------------------------
+# Ranking has a real blind spot: group cards are longer with more sections,
+# so they crowd the full-depth tier even when the reader wants one
+# character. The curator knows their corpus better than the score does.
+
+def _named(name, path):
+    return _card(name=name, description=_DOSSIER, source_file=path)
+
+
+def test_pins_move_cards_to_the_front():
+    cards = [_named("A", "a.png"), _named("B", "b.png"), _named("C", "c.png")]
+    assert [c.name for c in apply_pins(cards, ["c.png"])] == ["C", "A", "B"]
+
+
+def test_pins_preserve_relative_order_within_each_group():
+    cards = [_named(n, f"{n}.png") for n in "ABCD"]
+    assert [c.name for c in apply_pins(cards, ["D.png", "B.png"])] == ["B", "D", "A", "C"]
+
+
+def test_no_pins_leaves_the_ranking_untouched():
+    cards = [_named(n, f"{n}.png") for n in "ABC"]
+    assert apply_pins(cards, None) == cards
+    assert apply_pins(cards, []) == cards
+
+
+def test_unknown_pins_are_ignored():
+    cards = [_named("A", "a.png"), _named("B", "b.png")]
+    assert [c.name for c in apply_pins(cards, ["missing.png"])] == ["A", "B"]

@@ -90,3 +90,24 @@ def exemplar_names(cards: list[Card], n: int = 3) -> list[str]:
         if name and score_card(card) > 0:
             out.append(name)
     return out
+
+
+def apply_pins(cards: list[Card], pinned_files: list[str] | None) -> list[Card]:
+    """Move explicitly pinned cards to the front, keeping relative order.
+
+    Ranking is a heuristic, and it has a real blind spot: group cards are
+    naturally longer with more sections, so they crowd the top of the
+    ranking and therefore the full-depth tier. On a real corpus 5 of the
+    top 10 were multi-character cards, which skews the clearest worked
+    examples toward groups even when the reader wants one character.
+
+    The person who curated the corpus knows which cards are their best
+    far better than a score does, so pinning overrides it - pinned cards
+    lead the export and fill the untrimmed tier first.
+    """
+    if not pinned_files:
+        return cards
+    wanted = {f for f in pinned_files if f}
+    pinned = [c for c in cards if c.source_file in wanted]
+    rest = [c for c in cards if c.source_file not in wanted]
+    return pinned + rest

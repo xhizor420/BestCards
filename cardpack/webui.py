@@ -9,7 +9,8 @@ serves a single-page app and two JSON endpoints:
   POST /api/export                    body = JSON
       {"cards": [...], "format": "md"|"compact"|"json", "full": bool,
        "max_chars": int, "sort": "best"|"name"|"file", "fields": ["tags", ...],
-       "tokenizer": "heuristic"|"gpt"|"deepseek"|"glm"|"org/repo"}
+       "tokenizer": "heuristic"|"gpt"|"deepseek"|"glm"|"org/repo",
+       "pinned": ["file.png", ...]  # forced into the full-depth tier}
       -> {"filename": "...", "content": "..."}
 
   POST /api/estimate                  body = JSON (same shape as /api/export
@@ -35,7 +36,7 @@ from urllib.parse import parse_qs, urlparse
 from .cardspec import Card, CardExtractionError, parse_card_payload
 from .formats import WRITERS, card_to_dict, estimate_export
 from .png_chunks import NotAPngError, read_text_chunks
-from .selection import rank_cards
+from .selection import apply_pins, rank_cards
 
 STATIC_DIR = (Path(__file__).parent / "webui_static").resolve()
 
@@ -131,6 +132,8 @@ class Handler(BaseHTTPRequestHandler):
                 cards.sort(key=lambda c: (c.name or c.nickname or "").lower())
             else:
                 cards.sort(key=lambda c: c.source_file)
+            # Pins win over the ranking heuristic - see selection.apply_pins.
+            cards = apply_pins(cards, payload.get("pinned"))
 
             content = WRITERS[fmt](
                 cards,
@@ -158,6 +161,7 @@ class Handler(BaseHTTPRequestHandler):
             tokenizer = payload.get("tokenizer", "heuristic")
             full_top = int(payload.get("full_top", 10) or 0)
             cards = [Card.from_dict(d) for d in payload.get("cards", [])]
+            cards = apply_pins(rank_cards(cards), payload.get("pinned"))
             result = estimate_export(
                 cards,
                 format=fmt,

@@ -205,6 +205,18 @@ short:
 > archetypes, tags and openings), not as full examples. The stats and
 > conventions below are measured across all 57 cards.
 
+#### Choosing which cards get full depth
+
+Ranking is a heuristic with a known blind spot: **group cards are longer
+and have more sections, so they crowd the top**. On a real 57-card corpus
+5 of the top 10 were multi-character cards — which skews the clearest
+worked examples toward groups even when you want one character.
+
+You curated the corpus, so you overrule it: click the **☆** on any card
+in the UI to pin it. Pinned cards lead the export and fill the
+full-depth tier first. Each tile shows whether it's currently **shown in
+full** or **trimmed**, so the tier is never a guess.
+
 **Corpus stats and detected conventions always cover every card**, not
 just the untrimmed ones — trimming affects display only, never the
 analysis.

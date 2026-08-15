@@ -38,6 +38,8 @@ let entries = [];
 let extractionFailures = [];
 let isProcessing = false;
 let estimateRequestId = 0;
+// source_file names the user has forced into the full-depth tier.
+const pinned = new Set();
 
 const CONCURRENCY = 6;
 const PNG_RE = /\.png$/i;
@@ -175,6 +177,22 @@ function renderCardGrid() {
     removeBtn.addEventListener("click", () => removeEntry(index));
     tile.appendChild(removeBtn);
 
+    const key = entry.card.source_file;
+    const pinBtn = document.createElement("button");
+    pinBtn.type = "button";
+    pinBtn.className = "card-tile-pin" + (pinned.has(key) ? " pinned" : "");
+    pinBtn.title = pinned.has(key)
+      ? "Pinned — always shown in full. Click to unpin."
+      : "Pin: force this card into the full-depth tier";
+    pinBtn.textContent = pinned.has(key) ? "★" : "☆";
+    pinBtn.addEventListener("click", () => {
+      if (pinned.has(key)) pinned.delete(key);
+      else pinned.add(key);
+      renderCardGrid();
+      refreshEstimate();
+    });
+    tile.appendChild(pinBtn);
+
     const info = document.createElement("div");
     info.className = "card-tile-info";
 
@@ -189,6 +207,11 @@ function renderCardGrid() {
     tokens.dataset.role = "tokens";
     tokens.textContent = "…";
     info.appendChild(tokens);
+
+    const depth = document.createElement("div");
+    depth.className = "card-tile-depth";
+    depth.dataset.role = "depth";
+    info.appendChild(depth);
 
     tile.appendChild(info);
     cardGrid.appendChild(tile);
@@ -212,6 +235,7 @@ function currentExportOptions() {
     fields: fieldCheckboxes.filter((cb) => cb.checked).map((cb) => cb.value),
     tokenizer: tokenizerSelect.value,
     full_top: Math.max(0, parseInt(fullTopInput.value, 10) || 0),
+    pinned: Array.from(pinned),
   };
 }
 
@@ -243,10 +267,28 @@ async function refreshEstimate() {
     totalTokensEl.textContent = data.total_tokens.toLocaleString();
     tokenMethodEl.textContent = shortMethodLabel(data.method);
     tokenMethodEl.title = data.method;
-    const tiles = cardGrid.querySelectorAll(".card-tile");
-    data.cards.forEach((c, i) => {
-      const badge = tiles[i] && tiles[i].querySelector('[data-role="tokens"]');
-      if (badge) badge.textContent = `${c.tokens.toLocaleString()} tok`;
+    // The server returns cards in export order (ranked, pins first), so
+    // map them back onto tiles by name to label the full-depth tier.
+    const fullTop = fullCheckbox.checked ? data.cards.length : currentExportOptions().full_top;
+    const rankByName = new Map();
+    data.cards.forEach((c, i) => rankByName.set(c.name, i + 1));
+    const tokensByName = new Map();
+    data.cards.forEach((c) => tokensByName.set(c.name, c.tokens));
+
+    cardGrid.querySelectorAll(".card-tile").forEach((tile, idx) => {
+      const entry = entries[idx];
+      if (!entry) return;
+      const label = entry.card.name || entry.card.nickname || "(unnamed)";
+      const badge = tile.querySelector('[data-role="tokens"]');
+      const depth = tile.querySelector('[data-role="depth"]');
+      const tok = tokensByName.get(label);
+      if (badge && tok !== undefined) badge.textContent = `${tok.toLocaleString()} tok`;
+      const rank = rankByName.get(label);
+      if (depth) {
+        const isFull = rank !== undefined && rank <= fullTop;
+        depth.textContent = isFull ? "shown in full" : "trimmed";
+        depth.classList.toggle("is-full", isFull);
+      }
     });
   } catch (err) {
     if (requestId === estimateRequestId) {
@@ -387,6 +429,7 @@ exportBtn.addEventListener("click", async () => {
 resetBtn.addEventListener("click", () => {
   for (const entry of entries) URL.revokeObjectURL(entry.thumbUrl);
   entries = [];
+  pinned.clear();
   extractionFailures = [];
   renderSummary();
   renderCardGrid();

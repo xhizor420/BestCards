@@ -286,4 +286,35 @@ button {
 
 .card-tile-remove:hover { background: var(--danger); }
 
+.card-tile-pin {
+  position: absolute;
+  top: 0.3rem;
+  left: 0.3rem;
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 999px;
+  border: none;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 0.95rem;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.card-tile-pin:hover { background: var(--accent); }
+.card-tile-pin.pinned { background: var(--accent); color: var(--accent-text); }
+
+.card-tile-depth {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.card-tile-depth.is-full {
+  color: var(--success);
+  font-weight: 600;
+}
+
 .hidden { display: none !important; }
