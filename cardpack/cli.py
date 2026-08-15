@@ -113,6 +113,17 @@ def build_parser() -> argparse.ArgumentParser:
         "sort by source filename or card name.",
     )
     parser.add_argument(
+        "--full-top",
+        type=int,
+        default=10,
+        metavar="N",
+        help="Show the N most instructive cards COMPLETE (untrimmed) and trim the rest to "
+        "--max-chars (default: 10). This is what lets a 100+ card corpus stay affordable "
+        "without hiding the structure: structure is learned from a few whole cards, breadth "
+        "from many partial ones. Stats and detected conventions always cover every card. "
+        "Use 0 to trim everything evenly.",
+    )
+    parser.add_argument(
         "--best",
         type=int,
         metavar="N",
@@ -168,7 +179,12 @@ def main(argv: list[str] | None = None) -> int:
     extra_fields = normalize_extra_fields(args.fields)
     writer = WRITERS[args.format]
     output_text = writer(
-        cards, full=args.full, max_chars=args.max_chars, extra_fields=extra_fields, tokenizer=args.tokenizer
+        cards,
+        full=args.full,
+        max_chars=args.max_chars,
+        extra_fields=extra_fields,
+        tokenizer=args.tokenizer,
+        full_top=args.full_top,
     )
     Path(args.output).write_text(output_text, encoding="utf-8")
 
@@ -193,7 +209,7 @@ def main(argv: list[str] | None = None) -> int:
     # cards it can hide most of what the export is trying to teach - a
     # 600-char cap over ~8,000-char dossiers shows a reader roughly 7% of
     # each card. Say so rather than letting it pass unnoticed.
-    if not args.full and cards:
+    if not args.full and cards and args.full_top <= 0:
         shown = sum(min(len(c.description), args.max_chars) for c in cards)
         actual = sum(len(c.description) for c in cards)
         if actual and shown / actual < 0.5:
@@ -207,7 +223,7 @@ def main(argv: list[str] | None = None) -> int:
                 "cut.\n  For a reference corpus, prefer fewer COMPLETE cards over many "
                 "fragments, e.g.:"
             )
-            print("    --best 15 --full        (the 15 most instructive cards, untruncated)")
+            print("    --full-top 10           (show the 10 best cards complete, trim the rest)")
 
     if args.report_failures and failures:
         report_lines = [f"{path}: {reason}" for path, reason in failures]

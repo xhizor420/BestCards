@@ -60,6 +60,24 @@ from .stats import DEFAULT_TOKENIZER, build_corpus_stats, count_tokens, format_s
 # cross-card pattern analysis. In digest (non --full) mode we cap them.
 _DEFAULT_MAX_CHARS = 600
 
+# How many of the best-ranked cards are shown COMPLETE before the rest are
+# trimmed to `max_chars`.
+#
+# A flat cap across a whole corpus forces a false choice. On a real 57-card
+# corpus with ~8,400-char structured descriptions, a 600-char cap showed a
+# model 7% of each card and only 17 of 125 `>Section` headers - it was
+# being told to build a six-section dossier it had never seen completed.
+# But dropping to a handful of full cards throws away the breadth that
+# makes the corpus a useful database of what these characters look like.
+#
+# Both matter, and they want different things: STRUCTURE is learned from a
+# few complete examples, BREADTH from many partial ones. So the top-ranked
+# cards are rendered whole and everything after them is trimmed, which
+# keeps a 100+ card corpus affordable while still showing real, finished
+# structure. Corpus stats and detected conventions are always computed
+# over every card, not just the untrimmed ones.
+_DEFAULT_FULL_TOP = 10
+
 # Optional fields beyond the always-present core six. "tags" is on by
 # default since it's a single cheap line with real archetype signal;
 # everything else (including creator_notes) is opt-in.
@@ -356,6 +374,16 @@ def _basename(path: str) -> str:
     return os.path.basename(path) if path else ""
 
 
+def _cap_for_rank(index: int, cap: int | None, full_top: int) -> int | None:
+    """None (untrimmed) for the first `full_top` cards, else `cap`.
+
+    `index` is 1-based, matching the card numbering in the output.
+    """
+    if cap is None or full_top <= 0:
+        return cap
+    return None if index <= full_top else cap
+
+
 def _markdown_card_lines(
     i: int, total: int, card: Card, cap: int | None, *, extra_fields: frozenset[str]
 ) -> list[str]:
@@ -405,6 +433,7 @@ def to_markdown(
     max_chars: int | None = _DEFAULT_MAX_CHARS,
     extra_fields=DEFAULT_EXTRA_FIELDS,
     tokenizer: str = DEFAULT_TOKENIZER,
+    full_top: int = _DEFAULT_FULL_TOP,
 ) -> str:
     cards = list(cards)
     cap = None if full else max_chars
@@ -414,6 +443,17 @@ def to_markdown(
     lines.append("")
     lines.append(_CORPUS_PREAMBLE.format(n=len(cards)))
     lines.append("")
+    trimmed = 0 if (full or cap is None) else max(0, len(cards) - max(full_top, 0))
+    if trimmed:
+        shown = len(cards) - trimmed
+        lines.append(
+            f"The first {shown} cards below are shown COMPLETE — study those for structure "
+            f"and depth. The remaining {trimmed} are trimmed to ~{cap:,} characters per field "
+            f"to keep this file affordable; they are here for breadth (range of archetypes, "
+            f"tags and openings), not as full examples. The stats and conventions below are "
+            f"measured across all {len(cards)} cards."
+        )
+        lines.append("")
     lines.append("## Corpus Stats")
     lines.append(format_stats_block(build_corpus_stats(cards, include_tags="tags" in extra_fields)))
     coverage = analyze_conventions(cards)["field_coverage"]
@@ -422,7 +462,11 @@ def to_markdown(
         lines.append(f"- Field coverage: {filled}")
     lines.append("")
     for i, card in enumerate(cards, 1):
-        lines.extend(_markdown_card_lines(i, len(cards), card, cap, extra_fields=extra_fields))
+        lines.extend(
+            _markdown_card_lines(
+                i, len(cards), card, _cap_for_rank(i, cap, full_top), extra_fields=extra_fields
+            )
+        )
     body = "\n".join(lines).rstrip() + "\n"
     template_block = f"\n\n---\n\n{_build_response_template_md(cards)}"
     # Counted over body + template together so this number matches what
@@ -492,18 +536,27 @@ def to_compact(
     max_chars: int | None = _DEFAULT_MAX_CHARS,
     extra_fields=DEFAULT_EXTRA_FIELDS,
     tokenizer: str = DEFAULT_TOKENIZER,
+    full_top: int = _DEFAULT_FULL_TOP,
 ) -> str:
     cards = list(cards)
     cap = None if full else max_chars
     extra_fields = normalize_extra_fields(extra_fields)
     stats_line = format_stats_block(build_corpus_stats(cards, include_tags="tags" in extra_fields), compact=True)
-    lines: list[str] = [
-        _CORPUS_PREAMBLE.format(n=len(cards)),
-        f"Stats: {stats_line}",
-        "",
-    ]
+    _trimmed = 0 if (full or cap is None) else max(0, len(cards) - max(full_top, 0))
+    lines: list[str] = [_CORPUS_PREAMBLE.format(n=len(cards))]
+    if _trimmed:
+        lines.append(
+            f"NOTE: the first {len(cards) - _trimmed} cards are COMPLETE (study those for "
+            f"structure); the remaining {_trimmed} are trimmed to ~{cap:,} chars/field for "
+            f"breadth only. Stats and conventions cover all {len(cards)}."
+        )
+    lines += [f"Stats: {stats_line}", ""]
     for i, card in enumerate(cards, 1):
-        lines.extend(_compact_card_lines(i, len(cards), card, cap, extra_fields=extra_fields))
+        lines.extend(
+            _compact_card_lines(
+                i, len(cards), card, _cap_for_rank(i, cap, full_top), extra_fields=extra_fields
+            )
+        )
     body = "\n".join(lines).rstrip() + "\n"
     template_block = f"\n\n{_build_response_template_compact(cards)}\n"
     tc = count_tokens(body + template_block, tokenizer)
@@ -564,6 +617,7 @@ def to_json(
     max_chars: int | None = _DEFAULT_MAX_CHARS,
     extra_fields=DEFAULT_EXTRA_FIELDS,
     tokenizer: str = DEFAULT_TOKENIZER,
+    full_top: int = _DEFAULT_FULL_TOP,
 ) -> str:
     cards = list(cards)
     extra_fields = normalize_extra_fields(extra_fields)
@@ -579,7 +633,15 @@ def to_json(
         "count": len(cards),
         "stats": build_corpus_stats(cards, include_tags="tags" in extra_fields),
         "field_coverage": _analysis["field_coverage"],
-        "cards": [card_to_dict(c, full=full, max_chars=max_chars, extra_fields=extra_fields) for c in cards],
+        "cards": [
+            card_to_dict(
+                c,
+                full=full or i <= full_top,
+                max_chars=max_chars,
+                extra_fields=extra_fields,
+            )
+            for i, c in enumerate(cards, 1)
+        ],
         # Placed after "cards" (not in "note") so it's the last thing read
         # before responding - see _build_response_template_md's comment above.
         "response_template": {
@@ -630,6 +692,7 @@ def estimate_export(
     max_chars: int | None = _DEFAULT_MAX_CHARS,
     extra_fields=DEFAULT_EXTRA_FIELDS,
     tokenizer: str = DEFAULT_TOKENIZER,
+    full_top: int = _DEFAULT_FULL_TOP,
 ) -> dict:
     """Token estimate for the whole export plus each card's own marginal
     contribution (the size of just its section, not shared preamble/stats),
@@ -639,19 +702,25 @@ def estimate_export(
         raise ValueError(f"unknown format {format!r}")
 
     extra_fields = normalize_extra_fields(extra_fields)
-    total_text = WRITERS[format](cards, full=full, max_chars=max_chars, extra_fields=extra_fields, tokenizer=tokenizer)
+    total_text = WRITERS[format](
+        cards, full=full, max_chars=max_chars, extra_fields=extra_fields, tokenizer=tokenizer, full_top=full_top
+    )
     total_tc = count_tokens(total_text, tokenizer)
     cap = None if full else max_chars
 
     per_card = []
     for i, card in enumerate(cards, 1):
+        rank_cap = _cap_for_rank(i, cap, full_top)
         if format == "compact":
-            block = "\n".join(_compact_card_lines(i, len(cards), card, cap, extra_fields=extra_fields))
+            block = "\n".join(_compact_card_lines(i, len(cards), card, rank_cap, extra_fields=extra_fields))
         elif format == "md":
-            block = "\n".join(_markdown_card_lines(i, len(cards), card, cap, extra_fields=extra_fields))
+            block = "\n".join(_markdown_card_lines(i, len(cards), card, rank_cap, extra_fields=extra_fields))
         else:  # json
             block = json.dumps(
-                card_to_dict(card, full=full, max_chars=max_chars, extra_fields=extra_fields), ensure_ascii=False
+                card_to_dict(
+                    card, full=full or i <= full_top, max_chars=max_chars, extra_fields=extra_fields
+                ),
+                ensure_ascii=False,
             )
         card_tc = count_tokens(block, tokenizer)
         per_card.append({"index": i, "name": card.name or card.nickname or "(unnamed)", "tokens": card_tc.count})

@@ -122,6 +122,7 @@ class Handler(BaseHTTPRequestHandler):
             sort_key = payload.get("sort", "best")
             fields = payload.get("fields", ["tags"])
             tokenizer = payload.get("tokenizer", "heuristic")
+            full_top = int(payload.get("full_top", 10) or 0)
 
             cards = [Card.from_dict(d) for d in payload.get("cards", [])]
             if sort_key == "best":
@@ -131,7 +132,14 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 cards.sort(key=lambda c: c.source_file)
 
-            content = WRITERS[fmt](cards, full=full, max_chars=max_chars, extra_fields=fields, tokenizer=tokenizer)
+            content = WRITERS[fmt](
+                cards,
+                full=full,
+                max_chars=max_chars,
+                extra_fields=fields,
+                tokenizer=tokenizer,
+                full_top=full_top,
+            )
             filename = f"cards_export.{_EXTENSIONS[fmt]}"
             self._send_json(200, {"filename": filename, "content": content})
         except Exception as e:  # noqa: BLE001
@@ -148,9 +156,16 @@ class Handler(BaseHTTPRequestHandler):
             max_chars = payload.get("max_chars", 600)
             fields = payload.get("fields", ["tags"])
             tokenizer = payload.get("tokenizer", "heuristic")
+            full_top = int(payload.get("full_top", 10) or 0)
             cards = [Card.from_dict(d) for d in payload.get("cards", [])]
             result = estimate_export(
-                cards, format=fmt, full=full, max_chars=max_chars, extra_fields=fields, tokenizer=tokenizer
+                cards,
+                format=fmt,
+                full=full,
+                max_chars=max_chars,
+                extra_fields=fields,
+                tokenizer=tokenizer,
+                full_top=full_top,
             )
             self._send_json(200, result)
         except Exception as e:  # noqa: BLE001

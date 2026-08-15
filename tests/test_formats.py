@@ -22,9 +22,10 @@ def _sample_card(**overrides):
     return card
 
 
-def test_markdown_contains_key_fields_and_truncates_by_default():
+def test_markdown_contains_key_fields_and_truncates_beyond_the_full_tier():
+    # full_top=0 disables the untrimmed tier, so ordinary truncation applies.
     card = _sample_card(mes_example="x" * 2000)
-    out = to_markdown([card], full=False, max_chars=100)
+    out = to_markdown([card], full=False, max_chars=100, full_top=0)
     assert "Aria" in out
     assert "wandering elf ranger" in out
     assert "[truncated]" in out
@@ -355,3 +356,62 @@ def test_description_length_stats_line_ties_range_to_complexity():
     out = to_markdown(cards)
     assert "complexity" in out.lower()
     assert "not a target" in out.lower()
+
+
+# --- tiered depth --------------------------------------------------------
+# A flat cap forces a false choice between structure (learned from a few
+# COMPLETE cards) and breadth (many partial ones). The top-ranked cards
+# are rendered whole; the rest are trimmed, so a 100+ card corpus stays
+# affordable without hiding the structure it's meant to teach.
+
+def _numbered_cards(n, body_chars=3000):
+    return [
+        _sample_card(name=f"C{i:02}", description=f"Card {i} " + ("y" * body_chars))
+        for i in range(n)
+    ]
+
+
+def test_first_cards_are_untrimmed_and_later_ones_are_trimmed():
+    out = to_markdown(_numbered_cards(6), full=False, max_chars=100, full_top=3)
+    # Split at the response template, which itself mentions "## Card i/N".
+    body = out.split("WRITING THE NEW CHARACTER")[0]
+    per_card = body.split("## Card ")[1:]
+    assert len(per_card) == 6
+    for section in per_card[:3]:
+        assert "[truncated]" not in section, "a top-tier card was trimmed"
+    for section in per_card[3:]:
+        assert "[truncated]" in section, "a lower-tier card was not trimmed"
+
+
+def test_full_top_applies_to_compact_too():
+    out = to_compact(_numbered_cards(4), full=False, max_chars=100, full_top=2)
+    body = out.split("=== WRITING THE NEW CHARACTER")[0]
+    per_card = body.split("=== CARD ")[1:]
+    assert [("[truncated]" in s) for s in per_card] == [False, False, True, True]
+
+
+def test_full_flag_still_overrides_every_tier():
+    out = to_markdown(_numbered_cards(6), full=True, max_chars=100, full_top=2)
+    assert "[truncated]" not in out
+
+
+def test_json_gives_full_text_to_the_top_tier_only():
+    payload = json.loads(to_json(_numbered_cards(4), full=False, max_chars=100, full_top=2))
+    lens = [len(c["description"]) for c in payload["cards"]]
+    assert lens[0] > 1000 and lens[1] > 1000, "top tier should keep full description"
+    assert lens[2] < 200 and lens[3] < 200, "lower tier should be trimmed"
+
+
+def test_stats_cover_every_card_not_just_the_full_tier():
+    # The corpus is still a database of all N cards - trimming for display
+    # must not shrink what the stats and conventions are measured over.
+    out = to_markdown(_numbered_cards(6), full=False, max_chars=100, full_top=2)
+    assert "- Cards: 6" in out
+    assert "description 6/6" in out
+
+
+def test_estimate_matches_the_tiered_export():
+    cards = _numbered_cards(6)
+    result = estimate_export(cards, format="md", full=False, max_chars=100, full_top=2)
+    # The untrimmed top-tier cards must cost visibly more than trimmed ones.
+    assert result["cards"][0]["tokens"] > result["cards"][5]["tokens"] * 3

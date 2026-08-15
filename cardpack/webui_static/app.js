@@ -23,6 +23,8 @@ const tokenizerSelect = document.getElementById("tokenizerSelect");
 const fullCheckbox = document.getElementById("fullCheckbox");
 const maxCharsLabel = document.getElementById("maxCharsLabel");
 const maxCharsInput = document.getElementById("maxCharsInput");
+const fullTopLabel = document.getElementById("fullTopLabel");
+const fullTopInput = document.getElementById("fullTopInput");
 const fieldCheckboxes = Array.from(document.querySelectorAll(".field-checkbox"));
 const totalTokensEl = document.getElementById("totalTokens");
 const tokenMethodEl = document.getElementById("tokenMethod");
@@ -209,6 +211,7 @@ function currentExportOptions() {
     max_chars: parseInt(maxCharsInput.value, 10) || 600,
     fields: fieldCheckboxes.filter((cb) => cb.checked).map((cb) => cb.value),
     tokenizer: tokenizerSelect.value,
+    full_top: Math.max(0, parseInt(fullTopInput.value, 10) || 0),
   };
 }
 
@@ -330,7 +333,9 @@ toggleFailuresBtn.addEventListener("click", () => {
 // --- export options: live token re-estimate -------------------------------
 
 function updateMaxCharsVisibility() {
+  // Both controls only matter when something is being trimmed at all.
   maxCharsLabel.classList.toggle("hidden", fullCheckbox.checked);
+  fullTopLabel.classList.toggle("hidden", fullCheckbox.checked);
 }
 fullCheckbox.addEventListener("change", () => {
   updateMaxCharsVisibility();
@@ -340,6 +345,7 @@ formatSelect.addEventListener("change", refreshEstimate);
 sortSelect.addEventListener("change", refreshEstimate);
 tokenizerSelect.addEventListener("change", refreshEstimate);
 maxCharsInput.addEventListener("input", debouncedEstimate);
+fullTopInput.addEventListener("input", debouncedEstimate);
 fieldCheckboxes.forEach((cb) => cb.addEventListener("change", refreshEstimate));
 updateMaxCharsVisibility();
 
