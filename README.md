@@ -176,6 +176,55 @@ A structure also survives corpus growth: it qualifies on absolute count
 (≥5 cards) as well as share, so a coherent style held by a fixed set of
 cards isn't discarded just because you added unrelated cards around it.
 
+### Depth beats breadth — the most important setting
+
+The default `--max-chars 600` cap is quietly catastrophic on a corpus of
+richly-structured cards. Measured on a real 57-card corpus with a median
+description of ~8,400 characters:
+
+| Export | Section headers the model can see | Truncations | Tokens |
+| --- | --- | --- | --- |
+| 57 cards, 600-char cap | **17 of 125** | 140 | 28.9k |
+| 15 cards, `--full` | **114** | 0 | 49.9k |
+
+The first export shows a model roughly **7% of each card**, then asks it
+to build a six-section dossier it has almost never seen completed. For
+1.7× the tokens the second shows 6.7× the structure and zero fragments.
+That single difference explains most "the output is half-assed and
+doesn't mirror my cards" complaints.
+
+So for a reference corpus, spend the budget on fewer COMPLETE cards:
+
+```bash
+python3 bestcards.py ./my_cards -o corpus.md --best 15 --full
+```
+
+`--best N` keeps the N most instructive cards, ranked by how much they
+demonstrate — `>Section` structure weighted well above raw length, since
+a sprawling wall of prose teaches less than a compact, cleanly sectioned
+dossier. (On the real corpus a 12,020-char unstructured card scores 41
+while a 6,743-char structured one scores 69.) `--sort best` is the
+default ordering everywhere, so the strongest exemplars come first and,
+if anything gets cut, the weakest go.
+
+The CLI now warns when truncation is hiding most of your content rather
+than letting it pass silently:
+
+```
+NOTE: --max-chars 600 is showing only 7% of the description text
+  (34,200 of 481,736 chars).
+  These cards are long and structured, so most of that structure is being cut.
+  For a reference corpus, prefer fewer COMPLETE cards over many fragments, e.g.:
+    --best 15 --full        (the 15 most instructive cards, untruncated)
+```
+
+The export also names its own clearest worked examples, so a reader
+doesn't have to rank dozens of cards itself:
+
+> **Clearest worked examples** — if you only study a few closely, study
+> these, they demonstrate the structure and depth above most completely:
+> **Hero Family**, **Mary Jane**, **Susan & Sera**.
+
 ### Field coverage — what your corpus can't teach
 
 Every export reports which fields your cards actually populate:
@@ -391,7 +440,8 @@ bestcards ./my_cards -o cards_export.md
 | `--max-chars` | Per-field truncation cap in non-`--full` mode (default 600) |
 | `--tokenizer NAME` | `heuristic` (default) \| `deepseek` \| `glm` \| `gpt` \| any `org/repo` — see "Token counting" above |
 | `--no-recursive` | Only scan the top level of given folders |
-| `--sort` | Order cards by `name` (default) or `file` |
+| `--best N` | Keep only the N most instructive cards — pair with `--full` (see "Depth beats breadth") |
+| `--sort` | `best` (default, most instructive first) \| `name` \| `file` |
 | `--report-failures PATH` | Write a list of PNGs that had no card data |
 
 ## How extraction works

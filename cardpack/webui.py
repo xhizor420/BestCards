@@ -8,7 +8,7 @@ serves a single-page app and two JSON endpoints:
 
   POST /api/export                    body = JSON
       {"cards": [...], "format": "md"|"compact"|"json", "full": bool,
-       "max_chars": int, "sort": "name"|"file", "fields": ["tags", ...],
+       "max_chars": int, "sort": "best"|"name"|"file", "fields": ["tags", ...],
        "tokenizer": "heuristic"|"gpt"|"deepseek"|"glm"|"org/repo"}
       -> {"filename": "...", "content": "..."}
 
@@ -35,6 +35,7 @@ from urllib.parse import parse_qs, urlparse
 from .cardspec import Card, CardExtractionError, parse_card_payload
 from .formats import WRITERS, card_to_dict, estimate_export
 from .png_chunks import NotAPngError, read_text_chunks
+from .selection import rank_cards
 
 STATIC_DIR = (Path(__file__).parent / "webui_static").resolve()
 
@@ -118,12 +119,14 @@ class Handler(BaseHTTPRequestHandler):
                 return
             full = bool(payload.get("full", False))
             max_chars = payload.get("max_chars", 600)
-            sort_key = payload.get("sort", "name")
+            sort_key = payload.get("sort", "best")
             fields = payload.get("fields", ["tags"])
             tokenizer = payload.get("tokenizer", "heuristic")
 
             cards = [Card.from_dict(d) for d in payload.get("cards", [])]
-            if sort_key == "name":
+            if sort_key == "best":
+                cards = rank_cards(cards)
+            elif sort_key == "name":
                 cards.sort(key=lambda c: (c.name or c.nickname or "").lower())
             else:
                 cards.sort(key=lambda c: c.source_file)

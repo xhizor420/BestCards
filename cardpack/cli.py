@@ -7,6 +7,7 @@ from pathlib import Path
 from .cardspec import Card, CardExtractionError, parse_card_payload
 from .formats import ALL_EXTRA_FIELDS, DEFAULT_EXTRA_FIELDS, WRITERS, normalize_extra_fields
 from .png_chunks import NotAPngError, read_text_chunks_from_file
+from .selection import rank_cards, select_best
 from .stats import TOKENIZER_PRESETS, count_tokens
 
 
@@ -104,9 +105,20 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--sort",
-        choices=["file", "name"],
-        default="name",
-        help="Order cards in the output by source filename or by card name (default: name).",
+        choices=["best", "file", "name"],
+        default="best",
+        help="Order cards in the output. 'best' (default) puts the most instructive cards "
+        "first - most >Section structure, most substance - so a reader anchors on the "
+        "strongest examples and, if anything gets cut, the weakest go. 'file' and 'name' "
+        "sort by source filename or card name.",
+    )
+    parser.add_argument(
+        "--best",
+        type=int,
+        metavar="N",
+        help="Keep only the N most instructive cards (see --sort best). Pair with --full: "
+        "for richly-structured cards, N complete examples teach far more than every card "
+        "truncated to --max-chars, which can hide most of the structure you want mirrored.",
     )
     parser.add_argument(
         "--report-failures",
@@ -136,10 +148,22 @@ def main(argv: list[str] | None = None) -> int:
         except Exception as e:  # noqa: BLE001 - keep batch processing resilient
             failures.append((path, f"unexpected error: {e}"))
 
-    if args.sort == "name":
+    if args.sort == "best":
+        cards = rank_cards(cards)
+    elif args.sort == "name":
         cards.sort(key=lambda c: (c.name or c.nickname or "").lower())
     else:
         cards.sort(key=lambda c: c.source_file)
+
+    total_extracted = len(cards)
+    # Spec mix describes everything extracted, so it stays consistent with
+    # the "Extracted N card(s)" line even when --best narrows the export.
+    spec_counts: dict[str, int] = {}
+    for c in cards:
+        spec_counts[c.spec_version] = spec_counts.get(c.spec_version, 0) + 1
+
+    if args.best:
+        cards = select_best(cards, args.best)
 
     extra_fields = normalize_extra_fields(args.fields)
     writer = WRITERS[args.format]
@@ -148,15 +172,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     Path(args.output).write_text(output_text, encoding="utf-8")
 
-    spec_counts: dict[str, int] = {}
-    for c in cards:
-        spec_counts[c.spec_version] = spec_counts.get(c.spec_version, 0) + 1
     spec_summary = ", ".join(f"v{v}: {n}" for v, n in sorted(spec_counts.items()))
 
     tc = count_tokens(output_text, args.tokenizer)
 
     print(f"Scanned {len(png_paths)} PNG file(s).")
-    print(f"Extracted {len(cards)} card(s) ({spec_summary}).")
+    print(f"Extracted {total_extracted} card(s) ({spec_summary}).")
+    if args.best and len(cards) < total_extracted:
+        print(f"Kept the {len(cards)} most instructive for the export (--best).")
     if failures:
         print(f"Skipped {len(failures)} file(s) with no usable card data.")
     print(f"Wrote {args.format} export to {args.output}")
@@ -165,6 +188,26 @@ def main(argv: list[str] | None = None) -> int:
         print("  (fell back to the heuristic - see the message above for why)")
     elif not tc.exact:
         print("  (pass --tokenizer deepseek|glm|gpt for an exact count; see --help for details)")
+
+    # Truncation is silent by default, and on a corpus of long structured
+    # cards it can hide most of what the export is trying to teach - a
+    # 600-char cap over ~8,000-char dossiers shows a reader roughly 7% of
+    # each card. Say so rather than letting it pass unnoticed.
+    if not args.full and cards:
+        shown = sum(min(len(c.description), args.max_chars) for c in cards)
+        actual = sum(len(c.description) for c in cards)
+        if actual and shown / actual < 0.5:
+            print(
+                f"\nNOTE: --max-chars {args.max_chars} is showing only "
+                f"{shown / actual:.0%} of the description text "
+                f"({shown:,} of {actual:,} chars)."
+            )
+            print(
+                "  These cards are long and structured, so most of that structure is being "
+                "cut.\n  For a reference corpus, prefer fewer COMPLETE cards over many "
+                "fragments, e.g.:"
+            )
+            print("    --best 15 --full        (the 15 most instructive cards, untruncated)")
 
     if args.report_failures and failures:
         report_lines = [f"{path}: {reason}" for path, reason in failures]

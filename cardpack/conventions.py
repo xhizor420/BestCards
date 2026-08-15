@@ -520,6 +520,13 @@ def build_field_guidance(conv: dict) -> list[dict]:
                     "Optional — include it only if it genuinely adds something, in the same "
                     "voice and formatting as the rest."
                 )
+        elif total >= _MIN_CARDS and _share(count, total) < _COMMON_SHARE:
+            # Rare-but-present is different from absent: these cards
+            # mostly get by without it, which is itself the guidance.
+            entry["note"] = (
+                f"only {count} of {total} cards use it — this corpus mostly does without it, "
+                f"so treat it as optional rather than something to fill in for completeness."
+            )
         elif total >= _MIN_CARDS and count < total:
             entry["note"] = f"used by {count} of {total} cards — include it when it fits."
         out.append(entry)

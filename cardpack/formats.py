@@ -53,6 +53,7 @@ from .conventions import (
     build_field_guidance,
     build_style_sections,
 )
+from .selection import exemplar_names
 from .stats import DEFAULT_TOKENIZER, build_corpus_stats, count_tokens, format_stats_block
 
 # Fields whose text can be huge relative to how useful they are for
@@ -171,6 +172,17 @@ def _build_response_template_md(cards: list[Card]) -> str:
         house_style += (
             "\n### The scale these cards work at\n\n" + "\n".join(style["scale"]) + "\n"
         )
+    # Point at the clearest worked examples rather than leaving a reader to
+    # rank 50+ cards itself - the top-scoring cards are the ones that show
+    # the recommended structure most completely.
+    exemplars = exemplar_names(cards)
+    if len(exemplars) >= 2:
+        listed = ", ".join(f"**{n}**" for n in exemplars)
+        house_style += (
+            f"\n### Clearest worked examples\n\n"
+            f"If you only study a few closely, study these — they demonstrate the structure "
+            f"and depth above most completely: {listed}.\n"
+        )
 
     field_notes = "\n".join(
         f"- **{g['label']}** — {g['note']}" for g in guidance if g["note"]
@@ -274,6 +286,13 @@ def _build_response_template_compact(cards: list[Card]) -> str:
         )
     if style["scale"]:
         parts.append("The scale these cards work at:\n" + "\n".join(style["scale"]))
+    _exemplars = exemplar_names(cards)
+    if len(_exemplars) >= 2:
+        parts.append(
+            "Clearest worked examples — if you only study a few closely, study these: "
+            + ", ".join(_exemplars)
+            + "."
+        )
     field_notes = "\n".join(f"- {g['label']}: {g['note']}" for g in guidance if g["note"])
     if field_notes:
         parts.append(
