@@ -6,6 +6,7 @@ from cardpack.conventions import (
     build_coverage_notes,
     build_description_skeleton,
     build_example_dialogue_sample,
+    build_style_sections,
 )
 
 
@@ -136,7 +137,7 @@ def test_detects_section_headers_bullets_and_xml_blocks():
 
 def test_convention_lines_describe_the_dossier_structure():
     joined = "\n".join(build_convention_lines(analyze_conventions(_dossier_corpus())))
-    assert "STRUCTURED DOSSIER" in joined
+    assert "Structured dossier" in joined
     assert ">Appearance" in joined and ">Backstory" in joined
     assert "+ " in joined
     assert "<Name>" in joined
@@ -162,7 +163,7 @@ def test_minority_dossier_structure_is_not_reported():
     cards = [_card(name="A", description=_DOSSIER)]
     cards += [_card(name=f"B{i}", description="Plain prose only.") for i in range(4)]
     joined = "\n".join(build_convention_lines(analyze_conventions(cards)))
-    assert "STRUCTURED DOSSIER" not in joined
+    assert "Structured dossier" not in joined
 
 
 # --- field coverage ------------------------------------------------------
@@ -216,7 +217,7 @@ def _mixed_corpus(dossier_count, plain_count):
 def test_substantial_minority_structure_is_offered_not_discarded():
     # 3/10 = 30%: under the majority bar, over the "worth offering" bar.
     joined = "\n".join(build_convention_lines(analyze_conventions(_mixed_corpus(3, 7))))
-    assert "STRUCTURED DOSSIER" in joined
+    assert "Structured dossier" in joined
     # Reported with its real count and share, so a minority reads as one.
     assert "3 of 10 cards (30%)" in joined
     # ...and the skeleton keeps the real structure rather than falling back.
@@ -226,7 +227,7 @@ def test_substantial_minority_structure_is_offered_not_discarded():
 
 def test_dominant_structure_reports_its_real_share():
     joined = "\n".join(build_convention_lines(analyze_conventions(_mixed_corpus(8, 2))))
-    assert "STRUCTURED DOSSIER" in joined
+    assert "Structured dossier" in joined
     assert "8 of 10 cards (80%)" in joined
 
 
@@ -237,14 +238,14 @@ def test_well_attested_structure_survives_corpus_growth():
     # at 43). Those 8 cards are just as instructive at 8/100 as at 8/20.
     for prose in (12, 32, 92):
         joined = "\n".join(build_convention_lines(analyze_conventions(_mixed_corpus(8, prose))))
-        assert "STRUCTURED DOSSIER" in joined, f"lost the structure at 8/{8 + prose}"
+        assert "Structured dossier" in joined, f"lost the structure at 8/{8 + prose}"
         assert f"8 of {8 + prose} cards" in joined
 
 
 def test_rare_structure_stays_unreported():
     # 2 cards, 10%: below both the share bar and the absolute-count floor.
     joined = "\n".join(build_convention_lines(analyze_conventions(_mixed_corpus(2, 18))))
-    assert "STRUCTURED DOSSIER" not in joined
+    assert "Structured dossier" not in joined
 
 
 def test_bullet_line_has_no_dangling_section_reference():
@@ -255,3 +256,62 @@ def test_bullet_line_has_no_dangling_section_reference():
     joined = "\n".join(build_convention_lines(analyze_conventions(cards)))
     assert "`+ ` bullet" in joined
     assert "those sections" not in joined
+
+
+# --- shared conventions vs structural approaches -------------------------
+# Near-universal habits and genuinely optional structure are different
+# kinds of guidance. Flattening them hides which is which; splitting them
+# lets the shared ones be followed without thought while the structural
+# ones stay a real choice - led by the most organised, since every card
+# in a curated corpus already cleared the quality bar.
+
+def test_near_universal_habits_are_separated_from_structural_choices():
+    cards = _mixed_corpus(3, 7)
+    for c in cards:
+        c.first_mes = '*She looks up.* "Hey."'  # asterisks + quotes in all 10
+    sections = build_style_sections(analyze_conventions(cards))
+
+    shared = "\n".join(sections["shared"])
+    approaches = "\n".join(sections["approaches"])
+    assert "asterisks" in shared and "10 of 10" in shared
+    assert "double quotes" in shared
+    # The 3-of-10 dossier is a choice, not a shared habit.
+    assert "Structured dossier" in approaches
+    assert "Structured dossier" not in shared
+
+
+def test_structural_approaches_lead_with_the_most_organised():
+    sections = build_style_sections(analyze_conventions(_mixed_corpus(3, 7)))
+    assert sections["approaches"], "expected structural approaches"
+    assert "Structured dossier" in sections["approaches"][0]
+    assert "recommended default" in sections["approaches"][0]
+
+
+def test_scale_notes_are_kept_out_of_both_rule_groups():
+    sections = build_style_sections(analyze_conventions(_dossier_corpus()))
+    scale = "\n".join(sections["scale"])
+    assert "median" in scale
+    assert "median" not in "\n".join(sections["shared"])
+    assert "median" not in "\n".join(sections["approaches"])
+
+
+def test_flat_convention_lines_still_include_every_group():
+    conv = analyze_conventions(_dossier_corpus())
+    sections = build_style_sections(conv)
+    flat = build_convention_lines(conv)
+    assert len(flat) == len(sections["shared"]) + len(sections["approaches"]) + len(sections["scale"])
+
+
+def test_optional_touches_are_not_listed_as_structural_alternatives():
+    # A backtick-thoughts habit is not an alternative to a dossier
+    # structure - listing it under "default to the first one" would be
+    # nonsense, so independent formatting habits get their own bucket.
+    cards = _mixed_corpus(3, 7)
+    for c in cards[:3]:  # 3/10 = 30%, over the reporting bar but well under universal
+        c.first_mes = "She thinks `maybe later` and shrugs."
+    sections = build_style_sections(analyze_conventions(cards))
+    approaches = "\n".join(sections["approaches"])
+    touches = "\n".join(sections["touches"])
+    assert "Structured dossier" in approaches
+    assert "backticks" not in approaches
+    assert "backticks" in touches

@@ -69,6 +69,11 @@ _MIN_CARDS = 3
 # they represent - and the wording always reports the real count AND
 # share, so a minority is never dressed up as the house style.
 _MIN_STRUCTURE_CARDS = 5
+# At or above this share a convention isn't really a "choice" any more -
+# it's simply how cards in this corpus are written, and can be followed
+# without deliberation. Below it, competing approaches genuinely coexist
+# and should be presented as options rather than a single house style.
+_UNIVERSAL_SHARE = 0.8
 
 _CHAR_PLACEHOLDER_RE = re.compile(r"\{\{char\}\}", re.IGNORECASE)
 _USER_PLACEHOLDER_RE = re.compile(r"\{\{user\}\}", re.IGNORECASE)
@@ -233,109 +238,161 @@ def analyze_conventions(cards: Iterable[Card]) -> dict:
     }
 
 
-def build_convention_lines(conv: dict) -> list[str]:
-    """Human/model-readable instruction lines for the dominant conventions.
+def build_style_sections(conv: dict) -> dict:
+    """Split observed conventions into two honestly-labelled groups.
 
-    Empty when the corpus is too small or too inconsistent to claim a
-    house style - better to say nothing than to assert a convention half
-    the cards don't follow.
+    Real corpora contain near-universal habits (asterisk actions, quoted
+    speech, {{user}} placeholders - effectively just how cards are
+    written here) sitting alongside structural choices (a `>Section`
+    dossier, `+ ` bullets, `<Name>` wrappers) that only some cards make.
+    Flattening both into one list buries the distinction between "this is
+    simply the local convention" and "this is a deliberate way of
+    organising a card".
+
+    Crucially, share here is NOT a quality signal. This corpus is already
+    curated - every card in it was picked as a good one - so a structure
+    appearing in 11 of 57 cards means eleven cards that cleared the bar
+    chose it, not that it's a fringe habit diluted by better
+    alternatives. Low share means "less common", never "less good", and
+    the templates lead with the most structured approach on exactly that
+    basis rather than deferring to raw frequency.
+
+    Three buckets, because two different things sit below universal and
+    lumping them together reads badly: "approaches" are mutually
+    comparable ways of ORGANISING a card (pick one), while "touches" are
+    independent formatting flourishes (take any, or none). Presenting a
+    backtick-thoughts habit as an alternative to a dossier structure -
+    under a "default to the first one" instruction - would be nonsense.
+
+    "shared" holds what nearly every card does, safe to just follow.
+    "approaches" holds the structural options, most-organised first.
+    "touches" holds optional formatting habits, each with its real count.
     """
-    lines: list[str] = []
+    shared: list[str] = []
+    approaches: list[str] = []
+    touches: list[str] = []
     total = conv["total_cards"]
     n_example = conv["cards_with_example"]
     n_first = conv["cards_with_first_mes"]
     n_desc = conv["cards_with_description"]
     n_scenario = conv["cards_with_scenario"]
 
-    # --- document structure first: it's the biggest determinant of whether
-    # --- the result looks like the corpus at all. Reported down to
-    # --- _COMMON_SHARE, since a mixed corpus can have no majority
-    # --- structure at all and dropping it would lose the best signal here.
+    def add(matching: int, denominator: int, text: str, *, structural: bool = False) -> None:
+        """Route a line by how universal it is, and by whether it's a way
+        of organising the card or an independent formatting habit."""
+        line = f"- {text} [{_count_share(matching, denominator)}]"
+        if _share(matching, denominator) >= _UNIVERSAL_SHARE:
+            shared.append(line)
+        elif structural:
+            approaches.append(line)
+        else:
+            touches.append(line)
+
+    # --- structural approaches to Description -------------------------
     sections_reported = _common(conv["section_header_cards"], n_desc)
     if sections_reported:
         names = [n for n, _c, _p in conv["section_names"]]
         listed = ", ".join(f"`>{n}`" for n in names) if names else "`>Appearance`, `>Personality`, ..."
-        lines.append(
-            f"- Build Description as a STRUCTURED DOSSIER rather than a paragraph — `>Section` header "
-            f"lines, typically these in this order: {listed}. "
-            f"[{_count_share(conv['section_header_cards'], n_desc)} — the most organised approach here, "
-            f"and the one worth following even where it isn't the majority.]"
+        add(
+            conv["section_header_cards"],
+            n_desc,
+            f"**Structured dossier** — build Description from `>Section` header lines rather than "
+            f"prose, typically in this order: {listed}. This is the most organised approach in the "
+            f"corpus and the recommended default: it's what the most thorough cards here do, and it "
+            f"scales to as much detail as the character needs.",
+            structural=True,
         )
-        if conv["median_description_chars"]:
-            lines.append(
-                f"- Descriptions here are substantial: the median is about "
-                f"{conv['median_description_chars']:,} characters. A few short paragraphs is nowhere near it."
-            )
     if _common(conv["plus_bullet_cards"], n_desc):
         where = "inside those sections" if sections_reported else "in Description"
-        lines.append(
-            f"- Write facts as `+ ` bullet lines {where}. "
-            f"[{_count_share(conv['plus_bullet_cards'], n_desc)}]"
+        add(
+            conv["plus_bullet_cards"],
+            n_desc,
+            f"**Bulleted facts** — write details as `+ ` bullet lines {where}, rather than "
+            f"running them together as sentences.",
+            structural=True,
         )
     if _common(conv["xml_block_cards"], n_desc):
         extra = ""
         if _common(conv["npc_block_cards"], n_desc):
-            extra = ", and put side characters in a separate `<NPC>` block"
-        lines.append(
-            f"- Wrap the character's dossier in `<Name>` … `</Name>` tags{extra}. "
-            f"[{_count_share(conv['xml_block_cards'], n_desc)}]"
+            extra = " Side characters go in their own `<NPC>` block."
+        add(
+            conv["xml_block_cards"],
+            n_desc,
+            f"**Tagged blocks** — wrap the character's dossier in `<Name>` … `</Name>` tags.{extra}",
+            structural=True,
         )
-    if _dominant(conv["scenario_instructions_cards"], n_scenario):
-        lines.append(
-            f"- Write Scenario as an `<instructions>` block of explicit roleplay directives "
-            f"({_pct(conv['scenario_instructions_cards'], n_scenario)}% of these cards do), not as prose setting."
+    if _common(conv["scenario_instructions_cards"], n_scenario):
+        add(
+            conv["scenario_instructions_cards"],
+            n_scenario,
+            "**Directive scenario** — write Scenario as an `<instructions>` block of explicit "
+            "roleplay rules rather than prose setting.",
+            structural=True,
         )
 
-    # --- inline formatting
-    if _dominant(conv["char_placeholder"], total) or _dominant(conv["user_placeholder"], total):
-        both = _dominant(conv["char_placeholder"], total) and _dominant(conv["user_placeholder"], total)
+    # --- prose/formatting habits --------------------------------------
+    if _common(conv["char_placeholder"], total) or _common(conv["user_placeholder"], total):
+        both = _common(conv["char_placeholder"], total) and _common(conv["user_placeholder"], total)
         which = (
             "{{char}} and {{user}}"
             if both
-            else ("{{char}}" if _dominant(conv["char_placeholder"], total) else "{{user}}")
+            else ("{{char}}" if _common(conv["char_placeholder"], total) else "{{user}}")
         )
-        pct = max(_pct(conv["char_placeholder"], total), _pct(conv["user_placeholder"], total))
-        lines.append(
-            f"- Use the {which} placeholder(s) rather than writing names literally ({pct}% of these cards do)."
+        best = max(conv["char_placeholder"], conv["user_placeholder"])
+        add(best, total, f"Use the {which} placeholder(s) rather than writing names literally.")
+    if _common(conv["asterisk_action"], n_first):
+        add(
+            conv["asterisk_action"],
+            n_first,
+            "Wrap actions/narration in *asterisks*, keeping speech outside them.",
         )
-    if _dominant(conv["first_mes_status_line"], n_first):
-        lines.append(
-            f"- Open First Message with a pipe-separated status line "
-            f"(e.g. `11:12 PM | August 6 | 11°C Raining | Apartment Hallway`) — "
-            f"{_pct(conv['first_mes_status_line'], n_first)}% of these cards do."
+    if _common(conv["quoted_speech"], n_first):
+        add(conv["quoted_speech"], n_first, 'Put spoken dialogue in "double quotes".')
+    if _common(conv["backtick_thoughts"], total):
+        add(conv["backtick_thoughts"], total, "Put inner thoughts in `backticks`.")
+    if _common(conv["first_mes_status_line"], n_first):
+        add(
+            conv["first_mes_status_line"],
+            n_first,
+            "Open First Message with a pipe-separated status line, e.g. "
+            "`11:12 PM | August 6 | 11°C Raining | Apartment Hallway`.",
         )
-    if _dominant(conv["asterisk_action"], n_first):
-        lines.append(
-            f"- Wrap actions/narration in *asterisks*, keeping speech outside them "
-            f"({_pct(conv['asterisk_action'], n_first)}% of these cards do)."
-        )
-    if _dominant(conv["quoted_speech"], n_first):
-        lines.append(
-            f'- Put spoken dialogue in "double quotes" ({_pct(conv["quoted_speech"], n_first)}% of these cards do).'
-        )
-    if _dominant(conv["backtick_thoughts"], total):
-        lines.append(
-            f"- Put inner thoughts in `backticks` ({_pct(conv['backtick_thoughts'], total)}% of these cards do)."
-        )
-    if n_first >= _MIN_CARDS and conv["median_first_mes_paragraphs"] >= 2:
-        lines.append(
-            f"- First Message runs about {conv['median_first_mes_paragraphs']} paragraphs in these cards, "
-            f"not one line — long, scene-setting, and in-voice."
-        )
-    if _dominant(conv["start_marker"], n_example):
-        lines.append(
-            f"- Begin Example Dialogue with a `<START>` line "
-            f"({_pct(conv['start_marker'], n_example)}% of these cards do)."
-        )
-    if _dominant(conv["turn_prefixed_example"], n_example):
+    if _common(conv["start_marker"], n_example):
+        add(conv["start_marker"], n_example, "Begin Example Dialogue with a `<START>` line.")
+    if _common(conv["turn_prefixed_example"], n_example):
         turns = conv["median_example_turns"]
         turn_note = f" — typically about {turns} turn lines" if turns else ""
-        lines.append(
-            f"- Write Example Dialogue as alternating `{{{{user}}}}:` and `{{{{char}}}}:` lines, one turn per "
-            f"line ({_pct(conv['turn_prefixed_example'], n_example)}% of these cards do{turn_note})."
+        add(
+            conv["turn_prefixed_example"],
+            n_example,
+            f"Write Example Dialogue as alternating `{{{{user}}}}:` / `{{{{char}}}}:` lines, one turn "
+            f"per line{turn_note}.",
         )
 
-    return lines
+    # Scale note: a plain observation about how much these cards contain,
+    # not a target - length guidance elsewhere is explicit that complexity,
+    # not a number, should drive it.
+    scale: list[str] = []
+    if conv["median_description_chars"] and n_desc >= _MIN_CARDS:
+        scale.append(
+            f"- Descriptions here are substantial — the median is about "
+            f"{conv['median_description_chars']:,} characters. Whatever structure you pick, these "
+            f"cards carry a lot of concrete detail."
+        )
+    if n_first >= _MIN_CARDS and conv["median_first_mes_paragraphs"] >= 2:
+        scale.append(
+            f"- First Messages run about {conv['median_first_mes_paragraphs']} paragraphs — long, "
+            f"scene-setting and in-voice, not a single line."
+        )
+
+    return {"shared": shared, "approaches": approaches, "touches": touches, "scale": scale}
+
+
+def build_convention_lines(conv: dict) -> list[str]:
+    """Flat list of every observed convention (shared habits, structural
+    options, and scale notes), for consumers that want one list."""
+    sections = build_style_sections(conv)
+    return sections["shared"] + sections["approaches"] + sections["touches"] + sections["scale"]
 
 
 def build_description_skeleton(conv: dict) -> str:

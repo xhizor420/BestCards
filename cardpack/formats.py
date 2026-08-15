@@ -51,6 +51,7 @@ from .conventions import (
     build_description_skeleton,
     build_example_dialogue_sample,
     build_field_guidance,
+    build_style_sections,
 )
 from .stats import DEFAULT_TOKENIZER, build_corpus_stats, count_tokens, format_stats_block
 
@@ -141,12 +142,34 @@ def _build_response_template_md(cards: list[Card]) -> str:
     description_block = build_description_skeleton(conv)
     guidance = build_field_guidance(conv)
 
+    style = build_style_sections(conv)
     house_style = ""
-    if convention_lines:
-        house_style = (
-            "\n### What these cards actually do\n\n"
-            "Measured from the corpus above, not imposed from outside — so this is "
-            "the house style to write toward:\n\n" + "\n".join(convention_lines) + "\n"
+    if style["shared"]:
+        house_style += (
+            "\n### How these cards are written — shared by nearly all of them\n\n"
+            "Measured from the corpus above, not imposed from outside. These are simply the "
+            "local conventions; follow them:\n\n" + "\n".join(style["shared"]) + "\n"
+        )
+    if style["approaches"]:
+        house_style += (
+            "\n### How these cards are organised — approaches available to you\n\n"
+            "Every card above was picked as a good one, so the counts below tell you how "
+            "COMMON an approach is, never how good it is — an approach used by a handful of "
+            "these cards is still an approach that worked in cards worth keeping. The list "
+            "runs most-organised first; **default to the first one** unless the character "
+            "you're building genuinely calls for something looser.\n\n"
+            + "\n".join(style["approaches"])
+            + "\n"
+        )
+    if style["touches"]:
+        house_style += (
+            "\n### Optional touches some of these cards use\n\n"
+            "Independent of the structure you pick — take any that suit the character, "
+            "or none:\n\n" + "\n".join(style["touches"]) + "\n"
+        )
+    if style["scale"]:
+        house_style += (
+            "\n### The scale these cards work at\n\n" + "\n".join(style["scale"]) + "\n"
         )
 
     field_notes = "\n".join(
@@ -231,11 +254,26 @@ def _build_response_template_compact(cards: list[Card]) -> str:
         "cards above, and where a field calls for real content (an actual example exchange, "
         "an actual opening message), write the real thing rather than a description of it.",
     ]
-    if convention_lines:
+    style = build_style_sections(conv)
+    if style["shared"]:
         parts.append(
-            "What these cards actually do — the house style to write toward:\n"
-            + "\n".join(convention_lines)
+            "How these cards are written — shared by nearly all of them, so follow them:\n"
+            + "\n".join(style["shared"])
         )
+    if style["approaches"]:
+        parts.append(
+            "How these cards are organised — approaches available to you. Every card above was "
+            "picked as a good one, so the counts tell you how COMMON an approach is, never how "
+            "good it is. Most-organised first; default to the first one unless the character "
+            "genuinely calls for something looser:\n" + "\n".join(style["approaches"])
+        )
+    if style["touches"]:
+        parts.append(
+            "Optional touches some of these cards use — independent of the structure you pick, "
+            "take any that suit the character or none:\n" + "\n".join(style["touches"])
+        )
+    if style["scale"]:
+        parts.append("The scale these cards work at:\n" + "\n".join(style["scale"]))
     field_notes = "\n".join(f"- {g['label']}: {g['note']}" for g in guidance if g["note"])
     if field_notes:
         parts.append(

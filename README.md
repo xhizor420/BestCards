@@ -140,6 +140,42 @@ The house-style block also states the median description length outright
 because matching the corpus's *depth* is most of what separates a card
 that feels like the references from a thin sketch.
 
+#### Four groups, because they're four different kinds of guidance
+
+Observed conventions are split rather than dumped into one list, since
+"follow this" and "pick one of these" are not the same instruction:
+
+| Group | What it holds | How it reads |
+| --- | --- | --- |
+| **Shared** (≥80% of cards) | `*asterisk actions*`, `"quoted speech"`, `{{user}}` placeholders | Not really a choice — just how cards here are written. Follow them. |
+| **Approaches** | Structured dossier, bulleted facts, tagged blocks, directive scenario | Mutually comparable ways of *organising* a card. Most-organised first; default to the first. |
+| **Touches** | Backtick thoughts, status lines, example-dialogue turn format | Independent flourishes. Take any, or none. |
+| **Scale** | Median description length, first-message paragraph count | Plain observations about how much these cards carry. |
+
+The split matters: presenting a backtick-thoughts habit as an
+*alternative* to a dossier structure — under a "default to the first
+one" instruction — would be nonsense, and burying a 100%-universal
+convention in the same list as a 9% flourish loses the distinction
+between a convention and an option.
+
+**Share is not a quality signal here.** The corpus is already curated —
+every card in it was picked as a good one — so a structure appearing in
+11 of 57 cards means eleven cards that cleared your bar chose it, not
+that it's a fringe habit. The export says this outright to the reading
+model, and leads with the most organised approach on that basis rather
+than deferring to raw frequency:
+
+> Every card above was picked as a good one, so the counts below tell you
+> how COMMON an approach is, never how good it is — an approach used by a
+> handful of these cards is still an approach that worked in cards worth
+> keeping. The list runs most-organised first; **default to the first
+> one** unless the character you're building genuinely calls for
+> something looser.
+
+A structure also survives corpus growth: it qualifies on absolute count
+(≥5 cards) as well as share, so a coherent style held by a fixed set of
+cards isn't discarded just because you added unrelated cards around it.
+
 ### Field coverage — what your corpus can't teach
 
 Every export reports which fields your cards actually populate:
