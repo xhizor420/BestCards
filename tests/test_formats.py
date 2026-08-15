@@ -249,7 +249,7 @@ def test_response_template_gives_the_six_field_schema_and_is_last():
     expected_fields = ["name", "description", "personality", "scenario", "first_mes", "mes_example"]
 
     md = to_markdown([card])
-    assert "required response format" in md.lower()
+    assert "writing the new character" in md.lower()
     for label in ("Name:", "Description:", "Personality:", "Scenario:", "First Message:", "Example Dialogue:"):
         assert label in md
     # It must be the true tail of the file, not buried mid-document - the
@@ -257,7 +257,7 @@ def test_response_template_gives_the_six_field_schema_and_is_last():
     assert md.strip().endswith("revision.")
 
     compact = to_compact([card])
-    assert "required response format" in compact.lower()
+    assert "writing the new character" in compact.lower()
     assert compact.strip().endswith("changed one.")
 
     payload = json.loads(to_json([card]))
@@ -284,11 +284,12 @@ def test_response_template_asks_for_one_clean_copy_pasteable_block():
 
 def test_response_template_asks_for_revision_loop_with_full_card_resend():
     card = _sample_card()
+    # Whitespace normalized so these don't break on line-wrap position.
     for out in (to_markdown([card]), to_compact([card])):
-        low = out.lower()
-        assert "changes are wanted" in low
-        assert "full" in low and "card again" in low
-        assert "not just the changed one" in low
+        flat = " ".join(out.lower().split())
+        assert "changes are wanted" in flat
+        assert "full card again" in flat
+        assert "not just the changed one" in flat
 
     payload = json.loads(to_json([card]))
     instruction = payload["response_template"]["instruction"].lower()
@@ -296,23 +297,36 @@ def test_response_template_asks_for_revision_loop_with_full_card_resend():
     assert "full card again" in instruction
 
 
-def test_response_template_demands_every_field_and_a_real_example_exchange():
-    # The reported failure was models half-filling the card - especially
-    # leaving Example Dialogue as a one-line description instead of an
-    # actual exchange - so the template must say this outright.
-    # Whitespace is normalized so these assertions don't break just
-    # because a sentence wraps at a different column.
+def test_response_template_guides_toward_real_content_without_hard_mandates():
+    # Deliberately guidance, not commands: the corpus is the authority, so
+    # the template points at it ("what these cards actually do") and asks
+    # for real content rather than issuing prohibitions.
     card = _sample_card()
     for out in (to_markdown([card]), to_compact([card])):
         flat = " ".join(out.lower().split())
-        assert "required" in flat
-        assert "do not skip, rename, merge, or reorder" in flat
-        assert "not a description of one" in flat
+        assert "guided by the cards above" in flat
+        assert "where those cards show a clear convention, follow it" in flat
+        assert "rather than a description of it" in flat
         assert "blank line between" in flat
+        # The restrictive phrasing this replaced should be gone.
+        assert "do not skip, rename, merge, or reorder" not in flat
+        assert "a thin sketch is a failed answer" not in flat
 
-    instruction = " ".join(json.loads(to_json([card]))["response_template"]["instruction"].lower().split())
-    assert "do not skip, rename, merge, or reorder" in instruction
-    assert "not a description of one" in instruction
+
+def test_template_marks_unused_fields_optional_rather_than_required():
+    # A corpus that never fills `personality`/`mes_example` shouldn't be
+    # told those slots are mandatory - it should be told where the corpus
+    # actually keeps that content, and that filling them is optional.
+    dossier = "<A>\n>Appearance\n+ tall\n>Personality\n+ guarded\n</A>"
+    cards = [
+        Card(name=f"C{i}", description=dossier, first_mes="Hi there.", scenario="A tavern.", spec_version="2.0")
+        for i in range(5)
+    ]
+    for out in (to_markdown(cards), to_compact(cards)):
+        flat = " ".join(out.lower().split())
+        assert "optional" in flat
+        # Says where the corpus really keeps personality.
+        assert "`>personality` section inside description" in flat
 
 
 def test_preamble_warns_against_averaging_into_a_composite():

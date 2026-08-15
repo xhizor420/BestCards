@@ -46,11 +46,11 @@ from typing import Iterable
 from .cardspec import Card
 from .conventions import (
     analyze_conventions,
-    build_absent_core_fields,
     build_convention_lines,
     build_coverage_notes,
     build_description_skeleton,
     build_example_dialogue_sample,
+    build_field_guidance,
 )
 from .stats import DEFAULT_TOKENIZER, build_corpus_stats, count_tokens, format_stats_block
 
@@ -139,67 +139,66 @@ def _build_response_template_md(cards: list[Card]) -> str:
     # corpus doesn't actually use.
     example_block = build_example_dialogue_sample(conv)
     description_block = build_description_skeleton(conv)
-    coverage_notes = build_coverage_notes(conv)
-    absent = build_absent_core_fields(conv)
+    guidance = build_field_guidance(conv)
 
     house_style = ""
     if convention_lines:
         house_style = (
-            "\n### House style of these cards — follow it\n\n"
-            "These are measured from the cards above, not general advice. Match them:\n\n"
-            + "\n".join(convention_lines)
+            "\n### What these cards actually do\n\n"
+            "Measured from the corpus above, not imposed from outside — so this is "
+            "the house style to write toward:\n\n" + "\n".join(convention_lines) + "\n"
+        )
+
+    field_notes = "\n".join(
+        f"- **{g['label']}** — {g['note']}" for g in guidance if g["note"]
+    )
+    if field_notes:
+        field_notes = (
+            "\n### How these cards use the fields\n\n"
+            "Let the corpus lead here rather than filling every slot for its own sake:\n\n"
+            + field_notes
             + "\n"
         )
 
-    coverage = ""
-    if coverage_notes:
-        coverage = (
-            "\n### What this corpus does NOT show you\n\n"
-            + "\n".join(coverage_notes)
-            + "\n\nStill fill those fields in for the new character — just take the "
-            "conventions above (voice, formatting, level of detail) and apply them, "
-            "since there is no example here to copy from.\n"
-        )
+    # Only pre-fill placeholders for fields the corpus actually demonstrates;
+    # ones it never uses are shown as optional so the writer isn't pushed into
+    # inventing a shape the reference material never showed.
+    def _slot(field: str, label: str, placeholder: str) -> str:
+        entry = next((g for g in guidance if g["field"] == field), None)
+        if entry is not None and not entry["used"] and entry["total"] >= 3:
+            return f"{label}: <optional — see the note above>"
+        return f"{label}: {placeholder}"
 
-    absent_note = ""
-    if absent:
-        absent_note = (
-            f"\n(Note: {', '.join(absent)} "
-            f"{'is' if len(absent) == 1 else 'are'} empty in every card above, so the "
-            f"reference material can't show you {'it' if len(absent) == 1 else 'them'} — "
-            f"write {'it' if len(absent) == 1 else 'them'} anyway, in the same voice and "
-            f"formatting conventions as the rest.)\n"
-        )
+    return f"""## ▼ WRITING THE NEW CHARACTER — guided by the cards above ▼
 
-    return f"""## ▼ REQUIRED RESPONSE FORMAT — follow this exactly ▼
+Use the corpus above as your reference for voice, structure, and depth.
+Where those cards show a clear convention, follow it; where they don't,
+use your own judgement and keep everything consistent with the rest.
 
-Output the new character as ONE clean block, in exactly the field order
-below, with each field's label written out and a blank line between
-fields. No commentary, preamble, notes, or explanation before, between,
-or after the fields — the block must be copy-paste-able as a finished
-card. Do not include "## Card i/N" headers, corpus stats, or any other
-part of this file's multi-card wrapper; that wrapper holds many reference
-cards, it is not part of a single card.
+Present the finished character as ONE clean block, each field's label
+written out, a blank line between fields, and no commentary or
+explanation mixed in around them — that keeps it copy-paste-able as a
+finished card. Leave out "## Card i/N" headers and the corpus stats;
+that wrapper exists to hold many reference cards and isn't part of a
+single one.
 
-Every one of the six fields is required. Do not skip, rename, merge, or
-reorder them, and do not leave any as a one-line placeholder — Example
-Dialogue in particular must be a real, fully written exchange in the
-format shown below, not a description of one. Match the DEPTH of the
-cards above: they are detailed, specific, and long. A thin sketch is a
-failed answer.
-{house_style}{coverage}
-### The exact format to output
-{absent_note}
+Aim for the same depth as the cards above — they're detailed and
+specific, and that's most of what makes them good. Where a field calls
+for real content (an actual example exchange, an actual opening message),
+write the real thing rather than a description of it.
+{house_style}{field_notes}
+### Shape to follow
+
 Name: <character name>
 
 Description:
 {description_block}
 
-Personality: <personality traits, quirks, how they typically act>
+{_slot("personality", "Personality", "<personality traits, quirks, how they typically act>")}
 
-Scenario: <the setting or situation this character exists in>
+{_slot("scenario", "Scenario", "<the setting or situation this character exists in>")}
 
-First Message: <the character's opening message that starts the chat>
+{_slot("first_mes", "First Message", "<the character's opening message that starts the chat>")}
 
 Example Dialogue:
 {example_block}
@@ -207,9 +206,9 @@ Example Dialogue:
 ### After the block
 
 Write the whole block first, then on a new line after it, briefly ask
-whether any changes are wanted. If changes are requested, output the FULL
-card again in this same format — every field, not just the changed one —
-so it stays copy-paste-ready after every revision.
+whether any changes are wanted. If changes are requested, give back the
+FULL card again in this same shape — every field, not just the changed
+one — so it stays copy-paste-ready after every revision.
 """
 
 
@@ -218,43 +217,50 @@ def _build_response_template_compact(cards: list[Card]) -> str:
     convention_lines = build_convention_lines(conv)
     example_sample = build_example_dialogue_sample(conv)
     description_block = build_description_skeleton(conv)
-    coverage_notes = build_coverage_notes(conv)
+    guidance = build_field_guidance(conv)
 
     parts = [
-        "=== REQUIRED RESPONSE FORMAT — follow this exactly ===",
-        "Output the new character as ONE clean block, exactly these six fields "
-        "in this order, each label written out, a blank line between fields, and "
-        "NO commentary before/between/after them, so it is copy-paste-able as a "
-        'finished card. Do not include "=== CARD i/N ===" markers or a stats line '
-        "— that wrapper holds many reference cards, it is not part of a single card. "
-        "All six fields are required: do not skip, rename, merge, or reorder them, "
-        "and do not leave any as a one-line placeholder — Example Dialogue must be "
-        "a real, fully written exchange in the format shown, not a description of one. "
-        "Match the DEPTH of the cards above: they are detailed, specific and long. "
-        "A thin sketch is a failed answer.",
+        "=== WRITING THE NEW CHARACTER — guided by the cards above ===",
+        "Use the corpus above as your reference for voice, structure and depth. Where "
+        "those cards show a clear convention, follow it; where they don't, use your own "
+        "judgement and stay consistent with the rest. Present the finished character as "
+        "ONE clean block, each label written out, a blank line between fields, and no "
+        "commentary mixed in around them, so it stays copy-paste-able as a finished card. "
+        'Leave out "=== CARD i/N ===" markers and the stats line — that wrapper holds many '
+        "reference cards and isn't part of a single one. Aim for the same depth as the "
+        "cards above, and where a field calls for real content (an actual example exchange, "
+        "an actual opening message), write the real thing rather than a description of it.",
     ]
     if convention_lines:
         parts.append(
-            "House style measured from the cards above — match it:\n" + "\n".join(convention_lines)
+            "What these cards actually do — the house style to write toward:\n"
+            + "\n".join(convention_lines)
         )
-    if coverage_notes:
+    field_notes = "\n".join(f"- {g['label']}: {g['note']}" for g in guidance if g["note"])
+    if field_notes:
         parts.append(
-            "What this corpus does NOT show you:\n"
-            + "\n".join(coverage_notes)
-            + "\nStill fill those fields in, applying the conventions above."
+            "How these cards use the fields (let the corpus lead rather than filling "
+            "every slot for its own sake):\n" + field_notes
         )
+
+    def _slot(field: str, label: str, placeholder: str) -> str:
+        entry = next((g for g in guidance if g["field"] == field), None)
+        if entry is not None and not entry["used"] and entry["total"] >= 3:
+            return f"{label}: <optional — see the note above>"
+        return f"{label}: {placeholder}"
+
     parts.append(
-        "Format to output:\n\n"
+        "Shape to follow:\n\n"
         "Name: <character name>\n\n"
         f"Description:\n{description_block}\n\n"
-        "Personality: <traits, quirks, how they act>\n\n"
-        "Scenario: <the setting or situation>\n\n"
-        "First Message: <the character's opening message>\n\n"
+        f"{_slot('personality', 'Personality', '<traits, quirks, how they act>')}\n\n"
+        f"{_slot('scenario', 'Scenario', '<the setting or situation>')}\n\n"
+        f"{_slot('first_mes', 'First Message', '<the character opening message>')}\n\n"
         f"Example Dialogue:\n{example_sample}"
     )
     parts.append(
         "After the block, on a new line, briefly ask whether any changes are wanted. "
-        "If changes are requested, output the FULL card again in this same format — "
+        "If changes are requested, give back the FULL card again in this same shape — "
         "every field, not just the changed one."
     )
     return "\n\n".join(parts)

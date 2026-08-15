@@ -57,13 +57,19 @@ right where it matters most in the prompt, fixes both: you get a character
 back in the same six fields the whole corpus is built from, ready to turn
 into an actual new card, not just a description of one.
 
+It reads as **guidance anchored in your data, not a rulebook**. The
+framing is "here's what these cards actually do — write toward it; where
+they show a clear convention, follow it, where they don't, use your own
+judgement." The corpus is the authority, so the template points at it
+rather than issuing prohibitions, which leaves room for the model to
+actually be creative instead of just compliant.
+
 The template also says explicitly to give the character back as **one
 clean block with no commentary mixed into or around the fields** (each
 label written out, blank line between fields), so the response is
 directly copy-paste-able rather than the fields being buried in
-paragraphs of explanation — that **all six fields are required**, none
-skipped, renamed, merged, reordered, or left as a one-line placeholder —
-and to close by briefly **asking if any changes are wanted**, then on a
+paragraphs of explanation — and to close by briefly **asking if any
+changes are wanted**, then on a
 revision request, **re-sending the whole card again** (every field, not
 just the one that changed) so it stays copy-paste-ready through as many
 rounds of edits as you want.
@@ -145,13 +151,30 @@ Every export reports which fields your cards actually populate:
 
 This matters a lot. A corpus where **no** card fills `mes_example` cannot
 teach a model to write one — so if generated example dialogue comes back
-weak, that line tells you why immediately. Rather than silently demanding
-a field it never demonstrates, the export says so plainly to the model
-too ("No card in this corpus fills the separate `Example Dialogue` field
-(0/10) — so there is no house style here to copy for it"), and instructs
-it to write the field anyway using the conventions that *were* observed.
-It's also the signal you need to decide whether to add cards that do
-carry that field.
+weak, that line tells you why immediately.
+
+Rather than demanding a field it never demonstrates, the export lets the
+data lead. A field no card fills usually isn't missing — the corpus is
+deliberately keeping that content somewhere else, and the export says
+where:
+
+```
+### How these cards use the fields
+
+Let the corpus lead here rather than filling every slot for its own sake:
+
+- **Personality** — no card fills this separate field — these cards put it in
+  the `>Personality` section inside Description instead. Following the corpus
+  means doing the same; fill this field too only if it helps.
+- **Scenario** — used by 9 of 10 cards — include it when it fits.
+- **Example Dialogue** — no card here uses this field, so there's no house style
+  to follow for it. Optional — include it only if it genuinely adds something.
+```
+
+Those fields are then marked `<optional — see the note above>` in the
+shape rather than presented as mandatory slots. It's also the signal you
+need to decide whether to add cards that *do* carry that field — the
+guidance gets sharper as the corpus grows.
 
 Six fields are always present for every card (truncated per `--max-chars`,
 never dropped, unless `--full`): **name, description, personality,

@@ -381,3 +381,48 @@ def build_absent_core_fields(conv: dict) -> list[str]:
         return []
     coverage = conv["field_coverage"]
     return [_CORE_FIELD_LABELS[f] for f in CORE_FIELDS if coverage.get(f, 0) == 0]
+
+
+def build_field_guidance(conv: dict) -> list[dict]:
+    """Per-core-field guidance derived from what the corpus actually does.
+
+    The point is to GUIDE using the data rather than impose a fixed
+    six-field contract. A field no card fills isn't "missing" - very often
+    the corpus deliberately keeps that content somewhere else (these cards
+    put personality in a `>Personality` section inside description and
+    leave the spec's own `personality` field empty). Saying "required, but
+    we can't show you one" is worse than saying where the corpus actually
+    puts it and letting the writer follow suit.
+
+    Each entry: {label, field, count, total, used, note}.
+    """
+    total = conv["total_cards"]
+    coverage = conv["field_coverage"]
+    section_names = {n.lower() for n, _c, _p in conv["section_names"]}
+
+    out: list[dict] = []
+    for field in CORE_FIELDS:
+        if field == "name":
+            continue
+        label = _CORE_FIELD_LABELS[field]
+        count = coverage.get(field, 0)
+        entry = {"label": label, "field": field, "count": count, "total": total, "used": count > 0, "note": ""}
+
+        if count == 0 and total >= _MIN_CARDS:
+            # Does the corpus keep this content inside description instead?
+            if label.lower() in section_names:
+                entry["note"] = (
+                    f"no card fills this separate field — these cards put it in the "
+                    f"`>{label}` section inside Description instead. Following the corpus "
+                    f"means doing the same; fill this field too only if it helps."
+                )
+            else:
+                entry["note"] = (
+                    "no card here uses this field, so there's no house style to follow for it. "
+                    "Optional — include it only if it genuinely adds something, in the same "
+                    "voice and formatting as the rest."
+                )
+        elif total >= _MIN_CARDS and count < total:
+            entry["note"] = f"used by {count} of {total} cards — include it when it fits."
+        out.append(entry)
+    return out
