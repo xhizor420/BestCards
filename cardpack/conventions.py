@@ -28,11 +28,13 @@ Field coverage is measured too, and matters just as much: a corpus where
 the export says so plainly rather than demanding a field it never
 demonstrates.
 
-Only conventions that are actually dominant get reported (see _MIN_SHARE),
-and only when enough cards carry the field to say anything meaningful
-(_MIN_CARDS) - reporting "20% of cards do X" would invite mimicking a
-minority style, and reporting anything at all from a 2-card corpus is
-noise.
+A convention is reported when it's either a majority (_MIN_SHARE), a
+substantial share (_COMMON_SHARE), or demonstrated by enough cards in
+absolute terms (_MIN_STRUCTURE_CARDS) - and never from a corpus too
+small to mean anything (_MIN_CARDS). Every structural line carries its
+real count and share ("11 of 43 cards (26%)"), so a minority style is
+offered as a usable option without ever being dressed up as the house
+style.
 """
 
 from __future__ import annotations
@@ -52,12 +54,21 @@ _MIN_SHARE = 0.5
 # A diverse corpus often has NO majority structure (30 mixed cards had the
 # `>Section` dossier at 37%), and a strict majority rule would throw that
 # signal away entirely and fall back to a useless one-line placeholder -
-# losing exactly the structure worth mirroring. Reported with an honest
-# "a good number of" qualifier so it's never passed off as the house style.
+# losing exactly the structure worth mirroring.
 _COMMON_SHARE = 0.25
 # ...and at least this many cards must have the field at all, so tiny
 # corpora don't produce confident-sounding claims from 1-2 examples.
 _MIN_CARDS = 3
+# An absolute floor that survives corpus growth. Share alone is fragile:
+# a coherent dossier style held by 11 real cards read as 37% at 30 cards
+# and 26% at 43 - not because those cards changed, but because unrelated
+# cards were added around them. Dropping a structure with 11 worked
+# examples in it, purely because the denominator grew, throws away the
+# best material in the file. If this many cards demonstrate a structure,
+# there is plenty to learn from regardless of what share of the whole
+# they represent - and the wording always reports the real count AND
+# share, so a minority is never dressed up as the house style.
+_MIN_STRUCTURE_CARDS = 5
 
 _CHAR_PLACEHOLDER_RE = re.compile(r"\{\{char\}\}", re.IGNORECASE)
 _USER_PLACEHOLDER_RE = re.compile(r"\{\{user\}\}", re.IGNORECASE)
@@ -102,17 +113,20 @@ def _dominant(matching: int, total: int) -> bool:
 
 
 def _common(matching: int, total: int) -> bool:
-    """Dominant, or a substantial coherent minority worth offering."""
-    return total >= _MIN_CARDS and _share(matching, total) >= _COMMON_SHARE
+    """Dominant, or a substantial coherent minority worth offering.
 
-
-def _qualifier(matching: int, total: int) -> str:
-    """Honest strength wording so a 37% pattern is never presented as
-    'the house style' while still being surfaced as a real option.
-
-    Reads as "<qualifier> of these cards ...", so no trailing "of" here.
+    Passes on share OR on absolute count, so a well-attested structure
+    isn't discarded just because the corpus grew around it.
     """
-    return "Most" if _dominant(matching, total) else "A good number"
+    if total < _MIN_CARDS:
+        return False
+    return _share(matching, total) >= _COMMON_SHARE or matching >= _MIN_STRUCTURE_CARDS
+
+
+def _count_share(matching: int, total: int) -> str:
+    """"11 of 43 cards (26%)" - the real count alongside the share, so a
+    minority reads as the minority it is."""
+    return f"{matching} of {total} cards ({_pct(matching, total)}%)"
 
 
 def _pct(matching: int, total: int) -> int:
@@ -242,10 +256,10 @@ def build_convention_lines(conv: dict) -> list[str]:
         names = [n for n, _c, _p in conv["section_names"]]
         listed = ", ".join(f"`>{n}`" for n in names) if names else "`>Appearance`, `>Personality`, ..."
         lines.append(
-            f"- {_qualifier(conv['section_header_cards'], n_desc)} of these cards build Description as a "
-            f"STRUCTURED DOSSIER rather than a paragraph — `>Section` header lines "
-            f"({_pct(conv['section_header_cards'], n_desc)}%), typically these in this order: {listed}. "
-            f"It's the most organised approach in this corpus and the one worth following."
+            f"- Build Description as a STRUCTURED DOSSIER rather than a paragraph — `>Section` header "
+            f"lines, typically these in this order: {listed}. "
+            f"[{_count_share(conv['section_header_cards'], n_desc)} — the most organised approach here, "
+            f"and the one worth following even where it isn't the majority.]"
         )
         if conv["median_description_chars"]:
             lines.append(
@@ -255,16 +269,16 @@ def build_convention_lines(conv: dict) -> list[str]:
     if _common(conv["plus_bullet_cards"], n_desc):
         where = "inside those sections" if sections_reported else "in Description"
         lines.append(
-            f"- {_qualifier(conv['plus_bullet_cards'], n_desc)} of these cards write facts as `+ ` bullet "
-            f"lines {where} ({_pct(conv['plus_bullet_cards'], n_desc)}%)."
+            f"- Write facts as `+ ` bullet lines {where}. "
+            f"[{_count_share(conv['plus_bullet_cards'], n_desc)}]"
         )
     if _common(conv["xml_block_cards"], n_desc):
         extra = ""
         if _common(conv["npc_block_cards"], n_desc):
             extra = ", and put side characters in a separate `<NPC>` block"
         lines.append(
-            f"- {_qualifier(conv['xml_block_cards'], n_desc)} of these cards wrap the character's dossier in "
-            f"`<Name>` … `</Name>` tags{extra} ({_pct(conv['xml_block_cards'], n_desc)}%)."
+            f"- Wrap the character's dossier in `<Name>` … `</Name>` tags{extra}. "
+            f"[{_count_share(conv['xml_block_cards'], n_desc)}]"
         )
     if _dominant(conv["scenario_instructions_cards"], n_scenario):
         lines.append(

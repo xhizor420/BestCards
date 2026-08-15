@@ -217,29 +217,34 @@ def test_substantial_minority_structure_is_offered_not_discarded():
     # 3/10 = 30%: under the majority bar, over the "worth offering" bar.
     joined = "\n".join(build_convention_lines(analyze_conventions(_mixed_corpus(3, 7))))
     assert "STRUCTURED DOSSIER" in joined
-    assert "A good number of these cards" in joined
-    assert "Most of these cards build" not in joined
+    # Reported with its real count and share, so a minority reads as one.
+    assert "3 of 10 cards (30%)" in joined
     # ...and the skeleton keeps the real structure rather than falling back.
     skeleton = build_description_skeleton(analyze_conventions(_mixed_corpus(3, 7)))
     assert ">Appearance" in skeleton
 
 
-def test_dominant_structure_is_labelled_most():
+def test_dominant_structure_reports_its_real_share():
     joined = "\n".join(build_convention_lines(analyze_conventions(_mixed_corpus(8, 2))))
-    assert "Most of these cards build" in joined
-    assert "A good number" not in joined
+    assert "STRUCTURED DOSSIER" in joined
+    assert "8 of 10 cards (80%)" in joined
+
+
+def test_well_attested_structure_survives_corpus_growth():
+    # The real failure this guards: a coherent dossier style held by a
+    # fixed set of cards kept sliding toward the share threshold purely
+    # because unrelated cards were added around it (37% at 30 cards, 26%
+    # at 43). Those 8 cards are just as instructive at 8/100 as at 8/20.
+    for prose in (12, 32, 92):
+        joined = "\n".join(build_convention_lines(analyze_conventions(_mixed_corpus(8, prose))))
+        assert "STRUCTURED DOSSIER" in joined, f"lost the structure at 8/{8 + prose}"
+        assert f"8 of {8 + prose} cards" in joined
 
 
 def test_rare_structure_stays_unreported():
-    # 2/20 = 10%: below the "worth offering" bar entirely.
+    # 2 cards, 10%: below both the share bar and the absolute-count floor.
     joined = "\n".join(build_convention_lines(analyze_conventions(_mixed_corpus(2, 18))))
     assert "STRUCTURED DOSSIER" not in joined
-
-
-def test_qualifier_never_produces_a_doubled_of():
-    for dossier in (3, 8):
-        joined = "\n".join(build_convention_lines(analyze_conventions(_mixed_corpus(dossier, 10 - dossier))))
-        assert " of of " not in joined
 
 
 def test_bullet_line_has_no_dangling_section_reference():
