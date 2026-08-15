@@ -199,3 +199,54 @@ def test_no_coverage_notes_when_every_field_is_populated():
         c.tags = ["fantasy"]
     assert build_coverage_notes(analyze_conventions(cards)) == []
     assert build_absent_core_fields(analyze_conventions(cards)) == []
+
+
+# --- reporting tiers -----------------------------------------------------
+# A diverse corpus often has NO majority structure. A strict 50% rule threw
+# a coherent 37% dossier pattern away entirely and fell back to a useless
+# one-line Description placeholder - losing exactly the structure worth
+# mirroring. Substantial minorities are surfaced, honestly qualified.
+
+def _mixed_corpus(dossier_count, plain_count):
+    cards = [_card(name=f"D{i}", description=_DOSSIER) for i in range(dossier_count)]
+    cards += [_card(name=f"P{i}", description="Just a plain prose description.") for i in range(plain_count)]
+    return cards
+
+
+def test_substantial_minority_structure_is_offered_not_discarded():
+    # 3/10 = 30%: under the majority bar, over the "worth offering" bar.
+    joined = "\n".join(build_convention_lines(analyze_conventions(_mixed_corpus(3, 7))))
+    assert "STRUCTURED DOSSIER" in joined
+    assert "A good number of these cards" in joined
+    assert "Most of these cards build" not in joined
+    # ...and the skeleton keeps the real structure rather than falling back.
+    skeleton = build_description_skeleton(analyze_conventions(_mixed_corpus(3, 7)))
+    assert ">Appearance" in skeleton
+
+
+def test_dominant_structure_is_labelled_most():
+    joined = "\n".join(build_convention_lines(analyze_conventions(_mixed_corpus(8, 2))))
+    assert "Most of these cards build" in joined
+    assert "A good number" not in joined
+
+
+def test_rare_structure_stays_unreported():
+    # 2/20 = 10%: below the "worth offering" bar entirely.
+    joined = "\n".join(build_convention_lines(analyze_conventions(_mixed_corpus(2, 18))))
+    assert "STRUCTURED DOSSIER" not in joined
+
+
+def test_qualifier_never_produces_a_doubled_of():
+    for dossier in (3, 8):
+        joined = "\n".join(build_convention_lines(analyze_conventions(_mixed_corpus(dossier, 10 - dossier))))
+        assert " of of " not in joined
+
+
+def test_bullet_line_has_no_dangling_section_reference():
+    # "+ " bullets present but section headers too rare to report: the
+    # bullet line must not say "inside those sections" when no section
+    # line was emitted above it.
+    cards = [_card(name=f"C{i}", description="+ a fact\n+ another fact") for i in range(5)]
+    joined = "\n".join(build_convention_lines(analyze_conventions(cards)))
+    assert "`+ ` bullet" in joined
+    assert "those sections" not in joined

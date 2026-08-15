@@ -44,9 +44,17 @@ from typing import Iterable
 
 from .cardspec import Card
 
-# A convention must appear in at least this share of the cards that have
-# the relevant field before it's reported as "how this corpus does it".
+# A convention used by at least this share is reported as the dominant
+# pattern - "most of these cards do X".
 _MIN_SHARE = 0.5
+# A convention between _COMMON_SHARE and _MIN_SHARE is a real, coherent
+# minority worth offering as a strong option rather than discarding.
+# A diverse corpus often has NO majority structure (30 mixed cards had the
+# `>Section` dossier at 37%), and a strict majority rule would throw that
+# signal away entirely and fall back to a useless one-line placeholder -
+# losing exactly the structure worth mirroring. Reported with an honest
+# "a good number of" qualifier so it's never passed off as the house style.
+_COMMON_SHARE = 0.25
 # ...and at least this many cards must have the field at all, so tiny
 # corpora don't produce confident-sounding claims from 1-2 examples.
 _MIN_CARDS = 3
@@ -91,6 +99,20 @@ def _share(matching: int, total: int) -> float:
 
 def _dominant(matching: int, total: int) -> bool:
     return total >= _MIN_CARDS and _share(matching, total) >= _MIN_SHARE
+
+
+def _common(matching: int, total: int) -> bool:
+    """Dominant, or a substantial coherent minority worth offering."""
+    return total >= _MIN_CARDS and _share(matching, total) >= _COMMON_SHARE
+
+
+def _qualifier(matching: int, total: int) -> str:
+    """Honest strength wording so a 37% pattern is never presented as
+    'the house style' while still being surfaced as a real option.
+
+    Reads as "<qualifier> of these cards ...", so no trailing "of" here.
+    """
+    return "Most" if _dominant(matching, total) else "A good number"
 
 
 def _pct(matching: int, total: int) -> int:
@@ -212,32 +234,37 @@ def build_convention_lines(conv: dict) -> list[str]:
     n_scenario = conv["cards_with_scenario"]
 
     # --- document structure first: it's the biggest determinant of whether
-    # --- the result looks like the corpus at all.
-    if _dominant(conv["section_header_cards"], n_desc):
+    # --- the result looks like the corpus at all. Reported down to
+    # --- _COMMON_SHARE, since a mixed corpus can have no majority
+    # --- structure at all and dropping it would lose the best signal here.
+    sections_reported = _common(conv["section_header_cards"], n_desc)
+    if sections_reported:
         names = [n for n, _c, _p in conv["section_names"]]
         listed = ", ".join(f"`>{n}`" for n in names) if names else "`>Appearance`, `>Personality`, ..."
         lines.append(
-            f"- Build Description as a STRUCTURED DOSSIER, not a paragraph: "
-            f"`>Section` header lines ({_pct(conv['section_header_cards'], n_desc)}% of these cards do), "
-            f"typically these in this order — {listed}."
+            f"- {_qualifier(conv['section_header_cards'], n_desc)} of these cards build Description as a "
+            f"STRUCTURED DOSSIER rather than a paragraph — `>Section` header lines "
+            f"({_pct(conv['section_header_cards'], n_desc)}%), typically these in this order: {listed}. "
+            f"It's the most organised approach in this corpus and the one worth following."
         )
         if conv["median_description_chars"]:
             lines.append(
-                f"- That dossier is substantial: the median Description here is about "
+                f"- Descriptions here are substantial: the median is about "
                 f"{conv['median_description_chars']:,} characters. A few short paragraphs is nowhere near it."
             )
-    if _dominant(conv["plus_bullet_cards"], n_desc):
+    if _common(conv["plus_bullet_cards"], n_desc):
+        where = "inside those sections" if sections_reported else "in Description"
         lines.append(
-            f"- Inside those sections, write facts as `+ ` bullet lines "
-            f"({_pct(conv['plus_bullet_cards'], n_desc)}% of these cards do)."
+            f"- {_qualifier(conv['plus_bullet_cards'], n_desc)} of these cards write facts as `+ ` bullet "
+            f"lines {where} ({_pct(conv['plus_bullet_cards'], n_desc)}%)."
         )
-    if _dominant(conv["xml_block_cards"], n_desc):
+    if _common(conv["xml_block_cards"], n_desc):
         extra = ""
-        if _dominant(conv["npc_block_cards"], n_desc):
+        if _common(conv["npc_block_cards"], n_desc):
             extra = ", and put side characters in a separate `<NPC>` block"
         lines.append(
-            f"- Wrap the character's dossier in `<Name>` … `</Name>` tags"
-            f"{extra} ({_pct(conv['xml_block_cards'], n_desc)}% of these cards do)."
+            f"- {_qualifier(conv['xml_block_cards'], n_desc)} of these cards wrap the character's dossier in "
+            f"`<Name>` … `</Name>` tags{extra} ({_pct(conv['xml_block_cards'], n_desc)}%)."
         )
     if _dominant(conv["scenario_instructions_cards"], n_scenario):
         lines.append(
@@ -302,12 +329,12 @@ def build_description_skeleton(conv: dict) -> str:
     own section/bullet structure, or a plain placeholder when the corpus
     has no dominant structure to mirror."""
     n_desc = conv["cards_with_description"]
-    if not _dominant(conv["section_header_cards"], n_desc):
+    if not _common(conv["section_header_cards"], n_desc):
         return "<appearance, background, key facts>"
 
     names = [n for n, _c, _p in conv["section_names"]] or ["Appearance", "Personality", "Backstory"]
-    bullet = "+ " if _dominant(conv["plus_bullet_cards"], n_desc) else "- "
-    uses_xml = _dominant(conv["xml_block_cards"], n_desc)
+    bullet = "+ " if _common(conv["plus_bullet_cards"], n_desc) else "- "
+    uses_xml = _common(conv["xml_block_cards"], n_desc)
 
     lines: list[str] = []
     if uses_xml:
