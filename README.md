@@ -111,6 +111,13 @@ than the tool deciding for you. `--full` is a separate, independent knob:
 it only controls whether *included* fields are truncated, not which
 fields appear.
 
+Opting a field in always gets you its **actual content**, truncated per
+`--max-chars` like everything else — `lorebook`, `alt_greetings`,
+`system_prompt`, and `post_history_instructions` included. (Before, those
+four either printed a bare count instead of their text, or — for the two
+prompt fields in `compact` — were dropped entirely unless `--full` was
+*also* set, so ticking their boxes in the UI appeared to do nothing.)
+
 Attribution (who made the card, `creator`) is left out of every export
 entirely, with no toggle to bring it back — it's not a content pattern a
 model can learn from, just token cost with no analytical payoff for this
@@ -270,7 +277,7 @@ bestcards ./my_cards -o cards_export.md
 | `-o, --output` | Output file path (default `cards_export.md`) |
 | `-f, --format` | `md` \| `compact` \| `json` |
 | `--fields LIST` | Comma-separated optional fields to include: `tags`, `creator_notes`, `system_prompt`, `post_history_instructions`, `alt_greetings`, `lorebook`. Also accepts `all` or `none`. Default: `tags`. (The six core fields are always included and aren't part of this list.) |
-| `--full` | Don't truncate included prose, and show full text for included list fields (alt_greetings, lorebook) instead of just a count. Independent of `--fields` — controls *how much* of what's included is shown, not *what's* included |
+| `--full` | Don't truncate any included field to `--max-chars`. Strictly independent of `--fields`: it controls *how much* of what's included is shown, never *what's* included — any field you opt into always appears with its real content either way |
 | `--max-chars` | Per-field truncation cap in non-`--full` mode (default 600) |
 | `--tokenizer NAME` | `heuristic` (default) \| `deepseek` \| `glm` \| `gpt` \| any `org/repo` — see "Token counting" above |
 | `--no-recursive` | Only scan the top level of given folders |

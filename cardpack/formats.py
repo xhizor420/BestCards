@@ -238,7 +238,7 @@ def _basename(path: str) -> str:
 
 
 def _markdown_card_lines(
-    i: int, total: int, card: Card, cap: int | None, *, full: bool, extra_fields: frozenset[str]
+    i: int, total: int, card: Card, cap: int | None, *, extra_fields: frozenset[str]
 ) -> list[str]:
     title = card.name or card.nickname or "(unnamed)"
     lines = [f"## Card {i}/{total}: {title}", f"- (file: {_basename(card.source_file)})"]
@@ -256,26 +256,25 @@ def _markdown_card_lines(
         lines.append(f"- Example dialogue: {_truncate(_clean(card.mes_example), cap)}")
     if "creator_notes" in extra_fields and card.creator_notes:
         lines.append(f"- Creator notes: {_truncate(_clean(card.creator_notes), cap)}")
+    # Opting a field in always yields its CONTENT (truncated per `cap`).
+    # These list/extra fields used to collapse to a bare count unless
+    # `full` was also set, which made checking e.g. "Lorebook" in the UI
+    # look like it did nothing - see _content_for_opted_in_fields note in
+    # the module docstring.
     if "alt_greetings" in extra_fields and card.alternate_greetings:
-        if full:
-            lines.append(f"- Alt greetings ({len(card.alternate_greetings)}):")
-            for g in card.alternate_greetings:
-                lines.append(f"  - {_truncate(_clean(g), cap)}")
-        else:
-            lines.append(f"- Alt greetings: {len(card.alternate_greetings)} (use --full to include text)")
+        lines.append(f"- Alt greetings ({len(card.alternate_greetings)}):")
+        for g in card.alternate_greetings:
+            lines.append(f"  - {_truncate(_clean(g), cap)}")
     if "system_prompt" in extra_fields and card.system_prompt:
         lines.append(f"- System prompt: {_truncate(_clean(card.system_prompt), cap)}")
     if "post_history_instructions" in extra_fields and card.post_history_instructions:
         lines.append(f"- Post-history instructions: {_truncate(_clean(card.post_history_instructions), cap)}")
     if "lorebook" in extra_fields and card.lorebook_entries:
-        if full:
-            lines.append(f"- Lorebook ({len(card.lorebook_entries)} entries):")
-            for entry in card.lorebook_entries:
-                keys = ", ".join(entry.get("keys") or [])
-                content = _truncate(_clean(entry.get("content", "")), cap)
-                lines.append(f"  - [{keys}] {content}")
-        else:
-            lines.append(f"- Lorebook: {len(card.lorebook_entries)} entries (use --full to include text)")
+        lines.append(f"- Lorebook ({len(card.lorebook_entries)} entries):")
+        for entry in card.lorebook_entries:
+            keys = ", ".join(entry.get("keys") or [])
+            content = _truncate(_clean(entry.get("content", "")), cap)
+            lines.append(f"  - [{keys}] {content}")
     lines.append("")
     return lines
 
@@ -300,7 +299,7 @@ def to_markdown(
     lines.append(format_stats_block(build_corpus_stats(cards, include_tags="tags" in extra_fields)))
     lines.append("")
     for i, card in enumerate(cards, 1):
-        lines.extend(_markdown_card_lines(i, len(cards), card, cap, full=full, extra_fields=extra_fields))
+        lines.extend(_markdown_card_lines(i, len(cards), card, cap, extra_fields=extra_fields))
     body = "\n".join(lines).rstrip() + "\n"
     template_block = f"\n\n---\n\n{_build_response_template_md(cards)}"
     # Counted over body + template together so this number matches what
@@ -311,7 +310,7 @@ def to_markdown(
 
 
 def _compact_card_lines(
-    i: int, total: int, card: Card, cap: int | None, *, full: bool, extra_fields: frozenset[str]
+    i: int, total: int, card: Card, cap: int | None, *, extra_fields: frozenset[str]
 ) -> list[str]:
     """Labels here are short but spelled out (Name/Desc/Personality/...),
     not single-letter codes (N/D/P/...). The letter codes this format used
@@ -339,13 +338,25 @@ def _compact_card_lines(
         lines.append(f"Example: {_truncate(_clean(card.mes_example), cap)}")
     if "creator_notes" in extra_fields and card.creator_notes:
         lines.append(f"Notes: {_truncate(_clean(card.creator_notes), cap)}")
+    # As in _markdown_card_lines: an opted-in field always yields its
+    # content. Previously alt_greetings/lorebook printed only a bare count
+    # here (never their text, even with `full`), and system_prompt /
+    # post_history_instructions were silently dropped entirely unless
+    # `full` was set - so ticking those boxes in the UI appeared to do
+    # nothing at all.
     if "alt_greetings" in extra_fields and card.alternate_greetings:
-        lines.append(f"AltGreetings: {len(card.alternate_greetings)}")
+        lines.append(f"AltGreetings ({len(card.alternate_greetings)}):")
+        for g in card.alternate_greetings:
+            lines.append(f"- {_truncate(_clean(g), cap)}")
     if "lorebook" in extra_fields and card.lorebook_entries:
-        lines.append(f"Lorebook: {len(card.lorebook_entries)}")
-    if "system_prompt" in extra_fields and full and card.system_prompt:
+        lines.append(f"Lorebook ({len(card.lorebook_entries)}):")
+        for entry in card.lorebook_entries:
+            keys = ", ".join(entry.get("keys") or [])
+            content = _truncate(_clean(entry.get("content", "")), cap)
+            lines.append(f"- [{keys}] {content}")
+    if "system_prompt" in extra_fields and card.system_prompt:
         lines.append(f"System: {_truncate(_clean(card.system_prompt), cap)}")
-    if "post_history_instructions" in extra_fields and full and card.post_history_instructions:
+    if "post_history_instructions" in extra_fields and card.post_history_instructions:
         lines.append(f"PostHistory: {_truncate(_clean(card.post_history_instructions), cap)}")
     lines.append("")
     return lines
@@ -369,24 +380,39 @@ def to_compact(
         "",
     ]
     for i, card in enumerate(cards, 1):
-        lines.extend(_compact_card_lines(i, len(cards), card, cap, full=full, extra_fields=extra_fields))
+        lines.extend(_compact_card_lines(i, len(cards), card, cap, extra_fields=extra_fields))
     body = "\n".join(lines).rstrip() + "\n"
     template_block = f"\n\n{_build_response_template_compact(cards)}\n"
     tc = count_tokens(body + template_block, tokenizer)
     return body + f"\n# {tc.count:,} tokens ({tc.method})" + template_block
 
 
-def card_to_dict(card: Card, *, full: bool = True, extra_fields=ALL_EXTRA_FIELDS) -> dict:
+def card_to_dict(
+    card: Card, *, full: bool = True, max_chars: int | None = None, extra_fields=ALL_EXTRA_FIELDS
+) -> dict:
+    """Serialize a Card. Every key keeps a STABLE type regardless of
+    `full` - strings stay strings, lists stay lists - because this is also
+    the web UI's wire format, and Card.from_dict() reads it straight back.
+    An earlier version collapsed mes_example to a bool and
+    alternate_greetings/lorebook_entries to ints when full=False, which
+    silently corrupted any round-trip through those values. `full` (and
+    `max_chars`) now only control truncation, never shape.
+    """
     extra_fields = normalize_extra_fields(extra_fields)
+    cap = None if full else max_chars
+
+    def _t(text: str) -> str:
+        return _truncate(_clean(text), cap)
+
     d = {
         "name": card.name,
         "nickname": card.nickname,
         "character_version": card.character_version,
-        "description": card.description,
-        "personality": card.personality,
-        "scenario": card.scenario,
-        "first_mes": card.first_mes,
-        "mes_example": card.mes_example if full else bool(card.mes_example),
+        "description": _t(card.description),
+        "personality": _t(card.personality),
+        "scenario": _t(card.scenario),
+        "first_mes": _t(card.first_mes),
+        "mes_example": _t(card.mes_example),
         "source": card.source,
         "spec_version": card.spec_version,
         "source_keyword": card.source_keyword,
@@ -396,15 +422,15 @@ def card_to_dict(card: Card, *, full: bool = True, extra_fields=ALL_EXTRA_FIELDS
     if "tags" in extra_fields:
         d["tags"] = card.tags
     if "creator_notes" in extra_fields:
-        d["creator_notes"] = card.creator_notes
+        d["creator_notes"] = _t(card.creator_notes)
     if "system_prompt" in extra_fields:
-        d["system_prompt"] = card.system_prompt
+        d["system_prompt"] = _t(card.system_prompt)
     if "post_history_instructions" in extra_fields:
-        d["post_history_instructions"] = card.post_history_instructions
+        d["post_history_instructions"] = _t(card.post_history_instructions)
     if "alt_greetings" in extra_fields:
-        d["alternate_greetings"] = card.alternate_greetings if full else len(card.alternate_greetings)
+        d["alternate_greetings"] = [_t(g) for g in card.alternate_greetings]
     if "lorebook" in extra_fields:
-        d["lorebook_entries"] = card.lorebook_entries if full else len(card.lorebook_entries)
+        d["lorebook_entries"] = [{**e, "content": _t(e.get("content", ""))} for e in card.lorebook_entries]
     return d
 
 
@@ -412,18 +438,17 @@ def to_json(
     cards: Iterable[Card],
     *,
     full: bool = False,
-    max_chars: int | None = None,
+    max_chars: int | None = _DEFAULT_MAX_CHARS,
     extra_fields=DEFAULT_EXTRA_FIELDS,
     tokenizer: str = DEFAULT_TOKENIZER,
 ) -> str:
-    del max_chars  # JSON output is governed by --full only, not truncation
     cards = list(cards)
     extra_fields = normalize_extra_fields(extra_fields)
     payload = {
         "note": _CORPUS_PREAMBLE.format(n=len(cards)),
         "count": len(cards),
         "stats": build_corpus_stats(cards, include_tags="tags" in extra_fields),
-        "cards": [card_to_dict(c, full=full, extra_fields=extra_fields) for c in cards],
+        "cards": [card_to_dict(c, full=full, max_chars=max_chars, extra_fields=extra_fields) for c in cards],
         # Placed after "cards" (not in "note") so it's the last thing read
         # before responding - see _build_response_template_md's comment above.
         "response_template": {
@@ -488,11 +513,13 @@ def estimate_export(
     per_card = []
     for i, card in enumerate(cards, 1):
         if format == "compact":
-            block = "\n".join(_compact_card_lines(i, len(cards), card, cap, full=full, extra_fields=extra_fields))
+            block = "\n".join(_compact_card_lines(i, len(cards), card, cap, extra_fields=extra_fields))
         elif format == "md":
-            block = "\n".join(_markdown_card_lines(i, len(cards), card, cap, full=full, extra_fields=extra_fields))
+            block = "\n".join(_markdown_card_lines(i, len(cards), card, cap, extra_fields=extra_fields))
         else:  # json
-            block = json.dumps(card_to_dict(card, full=full, extra_fields=extra_fields), ensure_ascii=False)
+            block = json.dumps(
+                card_to_dict(card, full=full, max_chars=max_chars, extra_fields=extra_fields), ensure_ascii=False
+            )
         card_tc = count_tokens(block, tokenizer)
         per_card.append({"index": i, "name": card.name or card.nickname or "(unnamed)", "tokens": card_tc.count})
 

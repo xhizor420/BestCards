@@ -1,8 +1,15 @@
 import json
 import re
 
-from cardpack.cardspec import parse_card_payload
-from cardpack.formats import estimate_export, normalize_extra_fields, to_compact, to_json, to_markdown
+from cardpack.cardspec import Card, parse_card_payload
+from cardpack.formats import (
+    card_to_dict,
+    estimate_export,
+    normalize_extra_fields,
+    to_compact,
+    to_json,
+    to_markdown,
+)
 from cardpack.png_chunks import read_text_chunks
 from cardpack.stats import count_tokens
 from tests.conftest import b64_json, build_png, card_v2_payload
@@ -101,6 +108,75 @@ def test_tags_included_by_default_but_removable():
     card = _sample_card(tags=["fantasy", "adventure"])
     assert "fantasy" in to_compact([card])
     assert "fantasy" not in to_compact([card], extra_fields="none")
+
+
+def _card_with_all_optional_fields():
+    return _sample_card(
+        tags=["fantasy", "adventure"],
+        system_prompt="SYSPROMPT_MARKER stay in character.",
+        post_history_instructions="POSTHISTORY_MARKER never break character.",
+        alternate_greetings=["ALTGREETING_MARKER one.", "ALTGREETING_MARKER two."],
+        character_book={
+            "entries": [
+                {"keys": ["sword"], "content": "LOREBOOK_MARKER the Sunblade.", "comment": ""},
+                {"keys": ["castle"], "content": "LOREBOOK_MARKER Castle Myrr.", "comment": ""},
+            ]
+        },
+    )
+
+
+# Regression: opting a field in must yield its CONTENT, not a bare count,
+# and must not silently require --full as well. Previously `compact`
+# dropped system_prompt/post_history_instructions entirely unless full
+# was set, and both formats showed only counts for alt_greetings/lorebook
+# - so ticking those boxes in the UI looked like it did nothing.
+def test_opted_in_optional_fields_render_content_without_full():
+    card = _card_with_all_optional_fields()
+    for writer in (to_markdown, to_compact):
+        out = writer([card], extra_fields="all", full=False)
+        body = out.split("REQUIRED RESPONSE FORMAT")[0]
+        assert "SYSPROMPT_MARKER" in body, writer.__name__
+        assert "POSTHISTORY_MARKER" in body, writer.__name__
+        assert "LOREBOOK_MARKER the Sunblade." in body, writer.__name__
+        assert "LOREBOOK_MARKER Castle Myrr." in body, writer.__name__
+        assert "ALTGREETING_MARKER one." in body, writer.__name__
+        assert "ALTGREETING_MARKER two." in body, writer.__name__
+        assert "fantasy" in body, writer.__name__
+
+
+def test_opted_in_optional_fields_render_content_in_json_without_full():
+    payload = json.loads(to_json([_card_with_all_optional_fields()], extra_fields="all", full=False))
+    card = payload["cards"][0]
+    assert "SYSPROMPT_MARKER" in card["system_prompt"]
+    assert "POSTHISTORY_MARKER" in card["post_history_instructions"]
+    assert card["tags"] == ["fantasy", "adventure"]
+    # Types must stay stable regardless of `full` - these used to collapse
+    # to bare ints, which corrupted Card.from_dict() round-trips.
+    assert isinstance(card["alternate_greetings"], list)
+    assert isinstance(card["lorebook_entries"], list)
+    assert isinstance(card["mes_example"], str)
+    assert "LOREBOOK_MARKER" in card["lorebook_entries"][0]["content"]
+
+
+def test_card_dict_round_trips_without_type_corruption():
+    original = _card_with_all_optional_fields()
+    for full in (True, False):
+        restored = Card.from_dict(card_to_dict(original, full=full, max_chars=600, extra_fields="all"))
+        assert isinstance(restored.alternate_greetings, list)
+        assert isinstance(restored.lorebook_entries, list)
+        assert isinstance(restored.mes_example, str)
+        assert restored.tags == ["fantasy", "adventure"]
+        assert "SYSPROMPT_MARKER" in restored.system_prompt
+
+
+def test_not_opted_in_optional_fields_stay_out():
+    card = _card_with_all_optional_fields()
+    for writer in (to_markdown, to_compact):
+        body = writer([card], extra_fields="none", full=True).split("REQUIRED RESPONSE FORMAT")[0]
+        assert "SYSPROMPT_MARKER" not in body
+        assert "POSTHISTORY_MARKER" not in body
+        assert "LOREBOOK_MARKER" not in body
+        assert "ALTGREETING_MARKER" not in body
 
 
 def test_normalize_extra_fields_handles_all_none_and_junk():
