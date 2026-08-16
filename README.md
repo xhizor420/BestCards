@@ -456,7 +456,7 @@ independent of which model you're targeting. Pick one with `--tokenizer`
 
 | Name | What it uses | Needs |
 | --- | --- | --- |
-| `heuristic` (default) | word-aware estimate (~0.75 tok/word, better than flat chars/4) | nothing — instant, no download |
+| `heuristic` (default) | estimate: the larger of ~4 chars/token and ~1.33 tokens/word | nothing — instant, no download |
 | `deepseek` | DeepSeek-V3's real tokenizer.json | `pip install tokenizers huggingface_hub` + one-time fetch from huggingface.co |
 | `glm` | GLM-4.5's real tokenizer.json | same as above |
 | `gpt` | tiktoken's `cl100k_base` (exact for GPT-4/3.5, a reasonable proxy for most other BPE tokenizers) | `pip install tiktoken` + one-time fetch from openaipublic's CDN |

@@ -120,18 +120,33 @@ class TokenCount:
     exact: bool
 
 
+# Tokens per whitespace-delimited word for English prose. The familiar
+# rule of thumb runs the other way - one token is about 0.75 WORDS - so
+# the per-word factor is its reciprocal, ~1.33. Written as 0.75 it
+# under-counted by 44%, and only went unnoticed because the chars/4 term
+# below is larger for anything that looks like English (~6.3 chars per
+# word here, so chars/4 ~ 1.6 tokens/word) and the max() always won.
+_TOKENS_PER_WORD = 1.33
+_CHARS_PER_TOKEN = 4
+
+
 def _heuristic_token_count(text: str) -> int:
-    """Better than a flat chars/4: BPE tokenizers roughly average ~0.75
-    tokens per whitespace-delimited word for English prose, with a
-    per-character floor for chunks with unusually long/short "words"
-    (numbers, code, CJK text, punctuation runs) where that ratio breaks
-    down. Still an estimate, not a real tokenizer.
+    """Estimate tokens without a real tokenizer.
+
+    Takes the larger of a per-word and a per-character estimate. The
+    character term normally dominates for prose; the word term is the
+    guard for text with unusually long "words" (URLs, base64 remnants,
+    CJK runs) where characters-per-token collapses.
+
+    Deliberately the larger of the two: this number is used to decide
+    whether an export fits in a context window, and an over-estimate
+    costs a few cards while an under-estimate silently overflows.
     """
     if not text:
         return 0
     words = _WORD_RE.findall(text)
-    by_words = round(len(words) * 0.75) if words else 0
-    by_chars = round(len(text) / 4)
+    by_words = round(len(words) * _TOKENS_PER_WORD) if words else 0
+    by_chars = round(len(text) / _CHARS_PER_TOKEN)
     return max(by_words, by_chars, 1 if text.strip() else 0)
 
 
@@ -141,7 +156,7 @@ def count_tokens(text: str, tokenizer: str = DEFAULT_TOKENIZER) -> TokenCount:
         # _get_encoder already produced a label explaining why (plain
         # "heuristic" for an explicit heuristic request, or a "heuristic -
         # X unavailable (...)" explanation when a real tokenizer couldn't load)
-        method = "heuristic (~0.75 tok/word)" if label == "heuristic" else label
+        method = "heuristic (~4 chars/token)" if label == "heuristic" else label
         return TokenCount(_heuristic_token_count(text), method, False)
     try:
         if kind == "tiktoken":

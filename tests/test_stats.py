@@ -6,7 +6,7 @@ def test_heuristic_is_the_default_and_never_touches_network():
     tc = count_tokens("Hello world, this is a short test sentence.")
     assert tc.count > 0
     assert tc.exact is False
-    assert tc.method == "heuristic (~0.75 tok/word)"
+    assert tc.method == "heuristic (~4 chars/token)"
 
 
 def test_explicit_heuristic_request_matches_default():
@@ -17,7 +17,7 @@ def test_explicit_heuristic_request_matches_default():
 def test_unrecognized_tokenizer_name_falls_back_silently_to_heuristic():
     tc = count_tokens("some text", "not-a-real-tokenizer-name")
     assert tc.exact is False
-    assert tc.method == "heuristic (~0.75 tok/word)"
+    assert tc.method == "heuristic (~4 chars/token)"
 
 
 def test_gpt_preset_falls_back_with_explanation_when_unavailable(monkeypatch):
@@ -161,3 +161,25 @@ def test_ui_warning_names_ui_controls_not_cli_flags():
     notes = "\n".join(context_warning_ui(394_000, card_count=113))
     assert "--" not in notes
     assert "Show best N cards in full" in notes
+
+
+def test_heuristic_never_undercounts_prose_against_the_common_rule():
+    # The rule of thumb is "one token ~ 0.75 WORDS", i.e. ~1.33 tokens per
+    # word. Encoding it as words * 0.75 inverted it and under-counted by
+    # 44% - hidden only because the chars/4 term happened to be larger.
+    # This number decides whether an export fits in a context window, so
+    # the estimate must never land under the per-word rule.
+    from cardpack.stats import _heuristic_token_count
+
+    prose = "The quick brown fox jumps over the lazy dog. " * 200
+    words = len(prose.split())
+    assert _heuristic_token_count(prose) >= round(words * 1.3)
+
+
+def test_heuristic_handles_text_with_very_long_words():
+    # Long unbroken runs (URLs, base64 remnants) break chars/token, which
+    # is what the per-word term guards.
+    from cardpack.stats import _heuristic_token_count
+
+    assert _heuristic_token_count("x" * 400) >= 100
+    assert _heuristic_token_count("") == 0
