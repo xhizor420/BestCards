@@ -442,22 +442,36 @@ def build_style_sections(conv: dict) -> dict:
             structural=True,
         )
     if _common(conv["plus_bullet_cards"], n_desc):
-        where = "inside those sections" if sections_reported else "in Description"
-        # The two styles are exclusive in practice, so say which one the
-        # bullets belong to instead of implying they bolt onto either.
-        pairing = (
-            " These go with the `>`-marked headers above; cards that write bare header lines "
-            "run their details as plain lines instead."
-            if sections_reported and marker == ""
-            else ""
-        )
-        add(
-            conv["plus_bullet_cards"],
-            n_desc,
-            f"**Bulleted facts** — write details as `+ ` bullet lines {where}, rather than "
-            f"running them together as sentences.{pairing}",
-            structural=True,
-        )
+        if sections_reported and marker == "":
+            # The dossier line above showed bare headers, so the `>`+bullets
+            # combination has not been shown at all yet. Spell it out in
+            # full rather than pointing at "the marked headers above",
+            # which refers to something the reader never saw.
+            add(
+                conv["plus_bullet_cards"],
+                n_desc,
+                "**Marked headers with bullets** — the same dossier, written with an explicit "
+                "marker: prefix each header with `>` (`>Appearance`) and write its details as "
+                "`+ ` bullet lines beneath. Cards commit to one spelling or the other — bare "
+                "headers with plain lines, or `>` headers with `+ ` bullets — rather than "
+                "mixing them.",
+                structural=True,
+            )
+        else:
+            where = "inside those sections" if sections_reported else "in Description"
+            pairing = (
+                " These go with the `>`-marked headers above; cards that write their headers as "
+                "bare label lines run the details as plain lines instead, rather than mixing the two."
+                if sections_reported
+                else ""
+            )
+            add(
+                conv["plus_bullet_cards"],
+                n_desc,
+                f"**Bulleted facts** — write details as `+ ` bullet lines {where}, rather than "
+                f"running them together as sentences.{pairing}",
+                structural=True,
+            )
     if _common(conv["xml_block_cards"], n_desc):
         extra = ""
         if _common(conv["per_character_block_cards"], n_desc):
@@ -707,6 +721,10 @@ def build_field_guidance(conv: dict) -> list[dict]:
     total = conv["total_cards"]
     coverage = conv["field_coverage"]
     section_names = {n.lower() for n, _c, _p in conv["section_names"]}
+    # Name the section the way this corpus spells it. Hardcoding ">" told
+    # a reader to look for a `>Personality` section in a corpus whose
+    # headers are bare label lines - a marker it would never find.
+    marker = _section_marker(conv)
 
     out: list[dict] = []
     for field in CORE_FIELDS:
@@ -721,7 +739,7 @@ def build_field_guidance(conv: dict) -> list[dict]:
             if label.lower() in section_names:
                 entry["note"] = (
                     f"no card fills this separate field — these cards put it in the "
-                    f"`>{label}` section inside Description instead. Following the corpus "
+                    f"`{marker}{label}` section inside Description instead. Following the corpus "
                     f"means doing the same; fill this field too only if it helps."
                 )
             else:

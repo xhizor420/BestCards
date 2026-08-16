@@ -486,3 +486,27 @@ def test_group_skeleton_shows_repeating_the_block_per_character():
     skeleton = build_description_skeleton(analyze_conventions(group))
     assert "<SecondName>" in skeleton
     assert "repeat the same block per character" in skeleton
+
+
+def test_bullet_variant_is_spelled_out_when_the_corpus_writes_bare_headers():
+    # The dossier line shows bare headers, so pointing at "the `>`-marked
+    # headers above" would refer to something the reader never saw.
+    cards = [_card(name=f"B{i}", description=_BARE_DOSSIER) for i in range(8)]
+    cards += [_card(name=f"M{i}", description=_DOSSIER) for i in range(4)]
+    approaches = "\n".join(build_style_sections(analyze_conventions(cards))["approaches"])
+    assert "`>Appearance`" in approaches
+    assert "headers above" not in approaches
+    assert "rather than mixing them" in approaches
+
+
+def test_field_guidance_spells_the_section_the_way_the_corpus_does():
+    from cardpack.conventions import build_field_guidance
+
+    bare = analyze_conventions([_card(name=f"C{i}", description=_BARE_DOSSIER) for i in range(5)])
+    note = next(g for g in build_field_guidance(bare) if g["field"] == "personality")["note"]
+    assert "`Personality` section" in note
+    assert ">Personality" not in note
+
+    marked = analyze_conventions(_dossier_corpus())
+    note = next(g for g in build_field_guidance(marked) if g["field"] == "personality")["note"]
+    assert "`>Personality` section" in note
