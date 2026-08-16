@@ -88,11 +88,43 @@ _TURN_LINE_RE = re.compile(r"^\s*\{\{(?:user|char)\}\}\s*:", re.IGNORECASE | re.
 
 # Document-structure conventions inside a field.
 # ">Appearance", ">Behavior & Interests", ">Sex & Intimacy", ">Powers/Skills"
-_SECTION_HEADER_RE = re.compile(r"^>[ \t]*([A-Za-z][A-Za-z0-9 &/'’\-]{2,40})[ \t]*$", re.MULTILINE)
+# The ">" marker is OPTIONAL. Plenty of cards write the very same section
+# vocabulary as a bare label line - "Appearance" alone on its line, then
+# the content beneath it - and requiring the marker classified those as
+# unstructured prose. On a real 113-card corpus that read 19 cards as
+# using sections when 51 actually do, which then argued the dossier was a
+# 9% fringe habit rather than the corpus's leading structure.
+#
+# A whole line of nothing but a short label is the signal. "Style: fitted
+# blouses, ..." carries content after a colon and is a labelled fact, not
+# a header, so it is correctly excluded.
+_SECTION_HEADER_RE = re.compile(
+    r"^[ \t]*(>?)[ \t]*([A-Za-z][A-Za-z0-9 &/'’\-]{2,40})[ \t]*$", re.MULTILINE
+)
+# Dropping the ">" requirement makes a single stray match cheap - a
+# one-word line in prose can look like a header - so a card has to show a
+# repeated pattern before it counts as structured. Real dossiers carry
+# five or six headers; the corpus is sharply bimodal around this (at >=2
+# and at >=3 the same 51 cards qualify), so the exact floor isn't
+# load-bearing, only the fact that one exists.
+_MIN_SECTION_HEADERS = 2
+# ...and a section NAME has to recur across cards before it earns a place
+# in the skeleton, so one card's idiosyncratic heading isn't presented as
+# the house vocabulary.
+_MIN_SECTION_NAME_CARDS = 3
+# The four ways a card can combine the two choices, listed most-structured
+# first so a tie resolves toward the more explicit style rather than
+# arbitrarily.
+_SECTION_STYLES = ("marked_bulleted", "marked_plain", "bare_bulleted", "bare_plain")
 _PLUS_BULLET_RE = re.compile(r"^\+[ \t]+\S", re.MULTILINE)
-# <Audrey> ... </Audrey> style wrappers, and <NPC> side-character blocks.
+# <Audrey> ... </Audrey> style wrappers, and <NPC>/<NPCs> side-character
+# blocks - the plural spelling is the more common of the two in practice.
 _XML_BLOCK_RE = re.compile(r"<([A-Za-z][A-Za-z0-9_ ]{0,30})>")
-_NPC_BLOCK_RE = re.compile(r"<NPC>", re.IGNORECASE)
+_NPC_BLOCK_RE = re.compile(r"<NPCs?>", re.IGNORECASE)
+# Two or more distinct <Name> ... </Name> blocks in one description: the
+# way this corpus actually builds a group card, giving every character
+# their own dossier block rather than demoting extras into a side list.
+_NAMED_BLOCK_PAIR_RE = re.compile(r"<([A-Za-z][A-Za-z0-9_ ]{0,30})>(?=.*?</\1>)", re.DOTALL)
 # A card covering more than one character: an explicit <NPC> block, or a
 # name joining several ("Susan & Sera", "Kate and Andrew", "Hero Family").
 # Group cards are longer because they carry more characters - that is the
@@ -168,6 +200,19 @@ def _pct(matching: int, total: int) -> int:
     return round(_share(matching, total) * 100)
 
 
+def _section_headers(text: str) -> list[tuple[str, str]]:
+    """Header lines in `text` as (marker, name) pairs, marker being ">" or
+    "" - but only once the card shows enough of them to be a structure
+    rather than a coincidence. Below the floor, return nothing at all so a
+    stray one-word line can't register as a section-using card."""
+    found = _SECTION_HEADER_RE.findall(text)
+    return found if len(found) >= _MIN_SECTION_HEADERS else []
+
+
+def _distinct_named_blocks(text: str) -> set[str]:
+    return {name.strip().lower() for name in _NAMED_BLOCK_PAIR_RE.findall(text)}
+
+
 def _first_nonempty_line(text: str) -> str:
     for line in text.split("\n"):
         if line.strip():
@@ -176,9 +221,19 @@ def _first_nonempty_line(text: str) -> str:
 
 
 def _ordered_section_names(per_card_sections: list[list[str]]) -> list[tuple[str, int, float]]:
-    """Section names used by a majority of the section-using cards, ordered
-    by where they typically appear (average index), so the skeleton we show
-    reads in the corpus's own natural order rather than by raw frequency."""
+    """Section names common across the section-using cards, ordered by
+    where they typically appear (average index), so the skeleton we show
+    reads in the corpus's own natural order rather than by raw frequency.
+
+    The bar is a share, not a majority. Requiring >50% dropped
+    `Personality` and `Behavior & Interests` from a real 113-card corpus -
+    they sit at 39% and 42%, behind `Appearance` at 58% - and a skeleton
+    with no Personality section actively teaches the wrong shape. Real
+    section names and prose noise separate cleanly in practice (the six
+    genuine ones ran 33-58%, the stray one-word lines 6-9%), so a
+    quarter-share plus a small absolute floor keeps the vocabulary and
+    drops the noise.
+    """
     counts: dict[str, int] = defaultdict(int)
     positions: dict[str, list[float]] = defaultdict(list)
     for sections in per_card_sections:
@@ -193,7 +248,11 @@ def _ordered_section_names(per_card_sections: list[list[str]]) -> list[tuple[str
             positions[key].append(idx / max(1, len(sections) - 1) if len(sections) > 1 else 0.0)
 
     total = len(per_card_sections)
-    common = [(name, n, statistics.mean(positions[name])) for name, n in counts.items() if _share(n, total) >= _MIN_SHARE]
+    common = [
+        (name, n, statistics.mean(positions[name]))
+        for name, n in counts.items()
+        if _share(n, total) >= _COMMON_SHARE and n >= _MIN_SECTION_NAME_CARDS
+    ]
     common.sort(key=lambda t: t[2])
     return common
 
@@ -220,13 +279,26 @@ def analyze_conventions(cards: Iterable[Card]) -> dict:
     first_mes_paragraphs = [len([p for p in c.first_mes.split("\n\n") if p.strip()]) for c in with_first_mes]
 
     # Document structure inside `description`.
+    # Marker style and bullet style are not independent choices: cards
+    # either write ">Header" + "+ bullet", or a bare header with plain
+    # lines under it. Counting them separately and recombining produced a
+    # skeleton (bare headers WITH "+ " bullets) that exactly one card in
+    # 33 used, so the pairing is tracked as a pair.
     per_card_sections: list[list[str]] = []
+    marked_cards = 0  # cards whose headers mostly carry the ">" marker
+    style_counts = dict.fromkeys(_SECTION_STYLES, 0)
     for c in with_description:
-        found = _SECTION_HEADER_RE.findall(c.description)
-        if found:
-            per_card_sections.append(found)
+        found = _section_headers(c.description)
+        if not found:
+            continue
+        per_card_sections.append([name for _marker, name in found])
+        marked = sum(1 for marker, _n in found if marker) * 2 >= len(found)
+        marked_cards += marked
+        bulleted = bool(_PLUS_BULLET_RE.search(c.description))
+        style_counts[f"{'marked' if marked else 'bare'}_{'bulleted' if bulleted else 'plain'}"] += 1
 
     multi_character = sum(1 for c in cards if is_multi_character(c))
+    per_character_blocks = sum(1 for c in with_description if len(_distinct_named_blocks(c.description)) >= 2)
 
     field_coverage = {
         f: sum(1 for c in cards if str(getattr(c, f, "") or "").strip()) for f in CORE_FIELDS
@@ -260,7 +332,10 @@ def analyze_conventions(cards: Iterable[Card]) -> dict:
         ),
         # document structure
         "section_header_cards": len(per_card_sections),
+        "section_marker_cards": marked_cards,
+        "section_style_counts": style_counts,
         "section_names": _ordered_section_names(per_card_sections),
+        "per_character_block_cards": per_character_blocks,
         "plus_bullet_cards": sum(1 for c in with_description if _PLUS_BULLET_RE.search(c.description)),
         "xml_block_cards": sum(1 for c in with_description if _XML_BLOCK_RE.search(c.description)),
         "npc_block_cards": sum(1 for c in with_description if _NPC_BLOCK_RE.search(c.description)),
@@ -269,6 +344,27 @@ def analyze_conventions(cards: Iterable[Card]) -> dict:
             round(statistics.median([len(c.description) for c in with_description])) if with_description else 0
         ),
     }
+
+
+def _section_style(conv: dict) -> tuple[str, str]:
+    """(header marker, bullet prefix) of the single most common combination.
+
+    Returned as a pair because they travel together - ">Header" goes with
+    "+ " bullets, a bare header goes with plain lines beneath it - and the
+    skeleton has to show one real combination rather than a mix of the
+    most popular half of each.
+    """
+    counts = conv.get("section_style_counts") or {}
+    if not conv.get("section_header_cards") or not any(counts.values()):
+        return ">", "+ "
+    # _SECTION_STYLES is ordered most-structured first, so max() on the
+    # count alone resolves ties toward the more explicit style.
+    key = max(_SECTION_STYLES, key=lambda k: counts.get(k, 0))
+    return (">" if key.startswith("marked") else ""), ("+ " if key.endswith("bulleted") else "")
+
+
+def _section_marker(conv: dict) -> str:
+    return _section_style(conv)[0]
 
 
 def build_style_sections(conv: dict) -> dict:
@@ -323,31 +419,54 @@ def build_style_sections(conv: dict) -> dict:
 
     # --- structural approaches to Description -------------------------
     sections_reported = _common(conv["section_header_cards"], n_desc)
+    marker = _section_marker(conv)
     if sections_reported:
         names = [n for n, _c, _p in conv["section_names"]]
-        listed = ", ".join(f"`>{n}`" for n in names) if names else "`>Appearance`, `>Personality`, ..."
+        listed = (
+            ", ".join(f"`{marker}{n}`" for n in names)
+            if names
+            else f"`{marker}Appearance`, `{marker}Personality`, ..."
+        )
+        style_note = (
+            f"each header on its own line, prefixed with `{marker}`"
+            if marker
+            else "each header alone on its own line, with its content beneath it"
+        )
         add(
             conv["section_header_cards"],
             n_desc,
-            f"**Structured dossier** — build Description from `>Section` header lines rather than "
-            f"prose, typically in this order: {listed}. This is the most organised approach in the "
-            f"corpus and the recommended default: it's what the most thorough cards here do, and it "
-            f"scales to as much detail as the character needs.",
+            f"**Structured dossier** — build Description from section header lines rather than "
+            f"prose ({style_note}), typically in this order: {listed}. This is the most organised "
+            f"approach in the corpus and the recommended default: it's what the most thorough "
+            f"cards here do, and it scales to as much detail as the character needs.",
             structural=True,
         )
     if _common(conv["plus_bullet_cards"], n_desc):
         where = "inside those sections" if sections_reported else "in Description"
+        # The two styles are exclusive in practice, so say which one the
+        # bullets belong to instead of implying they bolt onto either.
+        pairing = (
+            " These go with the `>`-marked headers above; cards that write bare header lines "
+            "run their details as plain lines instead."
+            if sections_reported and marker == ""
+            else ""
+        )
         add(
             conv["plus_bullet_cards"],
             n_desc,
             f"**Bulleted facts** — write details as `+ ` bullet lines {where}, rather than "
-            f"running them together as sentences.",
+            f"running them together as sentences.{pairing}",
             structural=True,
         )
     if _common(conv["xml_block_cards"], n_desc):
         extra = ""
-        if _common(conv["npc_block_cards"], n_desc):
-            extra = " Side characters go in their own `<NPC>` block."
+        if _common(conv["per_character_block_cards"], n_desc):
+            extra = (
+                " For a group card, every character gets their own such block, one after "
+                "another, at full depth."
+            )
+        elif _common(conv["npc_block_cards"], n_desc):
+            extra = " Minor side characters go in a shared `<NPCs>` block."
         add(
             conv["xml_block_cards"],
             n_desc,
@@ -449,12 +568,25 @@ def build_cast_note(conv: dict) -> list[str]:
         "concept, so don't pad a solo card toward the group ones or trim a group card "
         "toward the solo ones.",
     ]
+    # How a group card is actually built here. The per-character block is
+    # the main event and is listed first: these cards give every member a
+    # full dossier of their own rather than a thumbnail sketch, which is
+    # most of why they read as complete instead of as one character with
+    # attachments.
+    blocks = conv["per_character_block_cards"]
+    if blocks:
+        lines.append(
+            f"- The way a group is built here: {blocks} {_cards(blocks)} give **each character "
+            f"their own complete `<Name>` … `</Name>` block**, one after another, every one with "
+            f"the same sections at the same depth as a solo card. Nobody is reduced to a "
+            f"one-line sketch — that's what makes these read as a real cast."
+        )
     npc = conv["npc_block_cards"]
     if npc:
         lines.append(
-            f"- For side characters specifically, {npc} {_cards(npc)} here {_verb(npc)} each one "
-            f"its own `<NPC>` block after the main character's dossier, written in the same "
-            f"structure — that's the pattern to follow when a card needs a supporting cast."
+            f"- For genuinely minor side characters, {npc} {_cards(npc)} here {_verb(npc)} them a "
+            f"shared `<NPCs>` block after the main dossier — use that for background figures, not "
+            f"for a character the roleplay actually centres on."
         )
     return lines
 
@@ -475,22 +607,29 @@ def build_description_skeleton(conv: dict) -> str:
         return "<appearance, background, key facts>"
 
     names = [n for n, _c, _p in conv["section_names"]] or ["Appearance", "Personality", "Backstory"]
-    bullet = "+ " if _common(conv["plus_bullet_cards"], n_desc) else "- "
+    marker, bullet = _section_style(conv)
     uses_xml = _common(conv["xml_block_cards"], n_desc)
 
     lines: list[str] = []
     if uses_xml:
         lines.append("<Name>")
     for name in names:
-        lines.append(f">{name}")
+        lines.append(f"{marker}{name}")
         lines.append(f"{bullet}<specific, concrete detail>")
-        lines.append(f"{bullet}<more detail — several bullets per section>")
+        lines.append(f"{bullet}<more detail — several per section>")
     if uses_xml:
         lines.append("</Name>")
-        if _dominant(conv["npc_block_cards"], n_desc):
-            lines.append("<NPC>")
+        # For a group, this corpus repeats the whole block per character
+        # rather than demoting the extras - so show that, not a side list.
+        if _common(conv["per_character_block_cards"], n_desc):
+            lines.append("")
+            lines.append("<SecondName>  ← for a group card, repeat the same block per character")
+            lines.append("  <their own full dossier, same sections>")
+            lines.append("</SecondName>")
+        elif _dominant(conv["npc_block_cards"], n_desc):
+            lines.append("<NPCs>")
             lines.append("<SideCharacter> <their own dossier> </SideCharacter>")
-            lines.append("</NPC>")
+            lines.append("</NPCs>")
     return "\n".join(lines)
 
 

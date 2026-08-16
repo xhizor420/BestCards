@@ -87,3 +87,16 @@ def test_bloat_is_stripped_from_fields_at_extraction_time():
 def test_clean_card_reports_zero_bloat_removed():
     card = parse_card_payload(read_text_chunks(build_png([("tEXt", "chara", b64_json(card_v2_payload()))])))
     assert card.bloat_chars_removed == 0
+
+
+def test_crlf_line_endings_are_normalised_at_extraction():
+    # A card authored on Windows must not read as unstructured prose just
+    # because every line ends "\r\n" - the "\r" defeats the end-of-line
+    # anchors the structure detection relies on.
+    payload = card_v2_payload()
+    payload["data"]["description"] = ">Appearance\r\n+ tall\r\n>Personality\r\n+ warm"
+    png = build_png([("tEXt", "chara", b64_json(payload))])
+    card = parse_card_payload(read_text_chunks(png))
+    assert "\r" not in card.description
+    assert card.description == ">Appearance\n+ tall\n>Personality\n+ warm"
+    assert card.bloat_chars_removed == 0

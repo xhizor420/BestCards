@@ -25,8 +25,8 @@ from __future__ import annotations
 from .cardspec import Card
 from .conventions import (
     _PLUS_BULLET_RE,
-    _SECTION_HEADER_RE,
     _XML_BLOCK_RE,
+    _section_headers,
 )
 
 
@@ -41,7 +41,9 @@ def score_card(card: Card) -> float:
     score = 0.0
 
     # Structure - the most valuable thing a card demonstrates.
-    sections = {m.strip().lower() for m in _SECTION_HEADER_RE.findall(desc)}
+    # Same detector the reporting uses, so a card that counts as
+    # "structured" in the template also scores as structured here.
+    sections = {name.strip().lower() for _marker, name in _section_headers(desc)}
     score += min(len(sections), 8) * 6.0  # up to 48
     if _PLUS_BULLET_RE.search(desc):
         score += 8.0

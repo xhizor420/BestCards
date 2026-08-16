@@ -112,12 +112,20 @@ examples.
 
 The bigger determinant of whether output looks like your corpus is the
 structure *inside* a field. Real high-quality cards routinely pack an
-entire structured dossier into `description` — `>Appearance`,
-`>Personality`, `>Backstory` section headers with `+ ` bullet lines,
-wrapped in `<Name>…</Name>` tags, with a separate `<NPC>` block for side
-characters — while leaving the spec's own `personality` field empty. A
-template rendering `Description: <appearance, background, key facts>` as
-a one-liner teaches a model to throw all of that away.
+entire structured dossier into `description` — `Appearance`,
+`Personality`, `Backstory` section headers with their details beneath,
+wrapped in `<Name>…</Name>` tags — while leaving the spec's own
+`personality` field empty. A template rendering
+`Description: <appearance, background, key facts>` as a one-liner
+teaches a model to throw all of that away.
+
+Two spellings of the same idea are both common, and both count: a
+`>`-marked header (`>Appearance`) with `+ ` bullet lines under it, or a
+bare label line (`Appearance`) with plain lines under it. They travel as
+*pairs* — of 33 section-using cards in a real corpus, 22 were bare+plain
+and 10 were marked+bulleted, and exactly 1 mixed them — so the skeleton
+shows whichever combination your corpus actually uses rather than the
+more popular half of each choice.
 
 So that structure is detected too, and the `Description:` slot in the
 template is filled with a skeleton built from your corpus's *actual*
@@ -133,7 +141,19 @@ Description:
 + <specific, concrete detail>
 ...
 </Name>
+
+<SecondName>  ← for a group card, repeat the same block per character
+  <their own full dossier, same sections>
+</SecondName>
 ```
+
+A section *name* earns its place by recurring across cards — a quarter
+share and at least three cards. A strict majority looked safer but wasn't:
+`Personality` ran at 39% and `Behavior & Interests` at 42% in a real
+corpus, behind `Appearance` at 58%, and a skeleton with no Personality
+section teaches the wrong shape. Genuine section names and prose noise
+separate cleanly in practice (the six real ones ran 33–58%, stray
+one-word lines 6–9%).
 
 The house-style block also states the median description length outright
 ("about 9,157 characters — a few short paragraphs is nowhere near it"),
@@ -197,13 +217,25 @@ template:
 > cast and the concept, so don't pad a solo card toward the group ones
 > or trim a group card toward the solo ones.
 
-Detection is deliberately conservative — an explicit `<NPC>` block, or a
-name joining several characters — so a group card written as prose under
-one name reads as solo rather than the other way round. It is only ever
-used to *report* the mix; neither shape is filtered, trimmed, or
-down-ranked for being what it is. Where the corpus does use `<NPC>`
-blocks for side characters, the template points at that as the pattern
-to follow for a group.
+Detection is deliberately conservative — an explicit `<NPC>`/`<NPCs>`
+block, or a name joining several characters — so a group card written as
+prose under one name reads as solo rather than the other way round. It is
+only ever used to *report* the mix; neither shape is filtered, trimmed, or
+down-ranked for being what it is.
+
+**How a group is actually built** matters more than the label, and the
+corpus answers it: 36 of 113 cards give **each character their own
+complete `<Name>`…`</Name>` block**, one after another, every one carrying
+the same sections at the same depth as a solo card. Only 7 use a shared
+`<NPCs>` block, and those are for genuine background figures. So the
+template leads with the per-character block — reducing a co-lead to a
+one-line sketch is the failure mode worth naming — and the skeleton shows
+the block repeating:
+
+> The way a group is built here: 36 cards give **each character their own
+> complete `<Name>` … `</Name>` block**, one after another, every one with
+> the same sections at the same depth as a solo card. Nobody is reduced to
+> a one-line sketch — that's what makes these read as a real cast.
 
 ### Depth *and* breadth — how a 100+ card corpus stays usable
 
@@ -344,6 +376,17 @@ were the worst offenders. Genuine content is left alone — an elongated
 word like `"aaaaaaaah"` or a `*bold action*` line is never mistaken for
 decoration, and exporter conventions like `<START>` inside `mes_example`
 are never mistaken for an HTML tag.
+
+Line endings are normalised (CRLF → LF) at the same point, and this is a
+correctness fix rather than tidying. A card authored on Windows carries a
+trailing `\r` on every line, which silently defeats every end-of-line
+anchor downstream: `>Appearance\r` stops matching a `^>…$` header pattern,
+and so does a decorative separator line. On a real 113-card corpus that
+hid **74 of 188 section headers** — the single most important structural
+signal in the file — and made a leading dossier structure read as a 9%
+fringe habit. It also removed 2,456 invisible bytes from the export.
+Normalisation is not counted as stripped bloat, since dropping a `\r`
+isn't markup removal and reporting it as such would inflate the figure.
 
 ### Guarding against "averaging into a bland composite"
 

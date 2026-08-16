@@ -51,14 +51,34 @@ _DECORATIVE_LINE_RE = re.compile(r"^[ \t]*([^\w\s])\1{3,}[ \t]*$", re.MULTILINE)
 _EXCESS_SPACES_RE = re.compile(r"[ \t]{2,}")
 _EXCESS_BLANK_LINES_RE = re.compile(r"\n{3,}")
 
+# Cards come from every platform and OS, so some arrive with CRLF (or bare
+# CR) line endings. Left in, a stray "\r" sits at the end of every line and
+# silently defeats every end-of-line anchor downstream: a ">Appearance\r"
+# header stops matching `^>...[ \t]*$`, and so does a decorative separator
+# line. On a real 113-card corpus that hid 74 of 188 section headers - the
+# single most important structural signal in the file - so normalising is
+# a correctness fix, not tidying. It also drops thousands of invisible
+# bytes from the export the user actually uploads.
+_LINE_ENDING_RE = re.compile(r"\r\n?")
+
+
+def normalize_newlines(text: str) -> str:
+    """CRLF and bare CR -> LF. Idempotent, and safe on empty text."""
+    return _LINE_ENDING_RE.sub("\n", text) if text else text
+
 
 def strip_bloat(text: str) -> tuple[str, int]:
-    """Returns (cleaned_text, chars_removed)."""
+    """Returns (cleaned_text, chars_removed).
+
+    Line endings are normalised first and NOT counted as removed: dropping
+    a "\\r" is an encoding fix, and reporting it as stripped bloat would
+    inflate the "markup removed" figure with characters that were never
+    markup.
+    """
     if not text:
         return text, 0
-    original_len = len(text)
-
-    cleaned = text
+    cleaned = normalize_newlines(text)
+    original_len = len(cleaned)
     cleaned = _DATA_URI_RE.sub("", cleaned)  # biggest single offender: embedded base64 images
     cleaned = _HTML_COMMENT_RE.sub("", cleaned)
     cleaned = _MD_IMAGE_RE.sub("", cleaned)

@@ -358,3 +358,131 @@ def test_cast_note_is_silent_when_the_corpus_is_all_one_shape():
     assert build_cast_note(analyze_conventions(_dossier_corpus())) == []
     groups = [_card(name=f"A{i} & B{i}") for i in range(5)]
     assert build_cast_note(analyze_conventions(groups)) == []
+
+
+# --- section headers with or without the ">" marker -----------------------
+# Plenty of cards write the same section vocabulary as a bare label line.
+# Requiring the marker read 19 of 113 real cards as structured when 51
+# were, which then argued the dossier was a 9% fringe habit.
+
+_BARE_DOSSIER = """<Aria>
+Appearance
+165cm, dark hair, green eyes.
+Personality
+Introverted but teasing once comfortable.
+Backstory
+Grew up in a coastal town.
+</Aria>"""
+
+
+def test_bare_section_headers_count_as_structure():
+    conv = analyze_conventions([_card(name=f"C{i}", description=_BARE_DOSSIER) for i in range(5)])
+    assert conv["section_header_cards"] == 5
+    assert conv["section_marker_cards"] == 0
+    assert [n for n, _c, _p in conv["section_names"]] == ["Appearance", "Personality", "Backstory"]
+
+
+def test_a_single_stray_label_line_is_not_a_structure():
+    # Dropping the ">" requirement makes one accidental match cheap, so a
+    # card has to show the pattern repeating before it counts.
+    prose = _card(description="She waits by the door.\nAlone\nThe rain keeps falling for hours.")
+    assert analyze_conventions([prose] * 5)["section_header_cards"] == 0
+
+
+def test_lines_carrying_content_after_a_label_are_not_headers():
+    card = _card(description="<A>\nStyle: fitted blouses and heels.\nNationality: American\n</A>")
+    assert analyze_conventions([card] * 5)["section_header_cards"] == 0
+
+
+def test_skeleton_mirrors_the_marker_style_the_corpus_uses():
+    bare = build_description_skeleton(analyze_conventions([_card(description=_BARE_DOSSIER)] * 5))
+    assert "\nAppearance\n" in bare and ">Appearance" not in bare
+
+    marked = build_description_skeleton(analyze_conventions(_dossier_corpus()))
+    assert ">Appearance" in marked
+
+
+def test_skeleton_never_mixes_two_styles_no_card_combines():
+    # Bare headers travel with plain lines; ">" headers travel with "+ "
+    # bullets. Counting the two choices independently produced a skeleton
+    # that exactly one card in 33 matched.
+    cards = [_card(name=f"B{i}", description=_BARE_DOSSIER) for i in range(8)]
+    cards += [_card(name=f"M{i}", description=_DOSSIER) for i in range(3)]
+    conv = analyze_conventions(cards)
+    assert conv["section_style_counts"]["bare_plain"] == 8
+    assert conv["section_style_counts"]["marked_bulleted"] == 3
+    skeleton = build_description_skeleton(conv)
+    assert "\nAppearance\n" in skeleton  # bare style won
+    assert ">Appearance" not in skeleton
+    assert "+ " not in skeleton  # ...so its bullets don't come along either
+
+
+def test_section_names_keep_a_strong_minority_like_personality():
+    # Personality ran at 39% in a real corpus, behind Appearance at 58%.
+    # A majority rule dropped it, and a skeleton with no Personality
+    # section teaches the wrong shape.
+    with_pers = [_card(name=f"P{i}", description=_BARE_DOSSIER) for i in range(4)]
+    without = [
+        _card(name=f"N{i}", description="<A>\nAppearance\ntall\nBackstory\ncoastal\n</A>")
+        for i in range(6)
+    ]
+    names = [n for n, _c, _p in analyze_conventions(with_pers + without)["section_names"]]
+    assert "Personality" in names
+    assert "Appearance" in names
+
+
+def test_one_cards_idiosyncratic_heading_stays_out_of_the_vocabulary():
+    odd = _card(name="Odd", description="<A>\nAppearance\ntall\nCybernetics\nan arm\n</A>")
+    corpus = [_card(name=f"C{i}", description=_BARE_DOSSIER) for i in range(5)] + [odd]
+    names = [n for n, _c, _p in analyze_conventions(corpus)["section_names"]]
+    assert "Cybernetics" not in names
+
+
+# --- how a group card is actually built -----------------------------------
+
+
+def test_plural_npcs_block_is_recognised():
+    # <NPCs> is the more common spelling in practice; matching only <NPC>
+    # under-counted a real corpus by a factor of three.
+    cards = [_card(name=f"C{i}", description=_DOSSIER + "\n<NPCs>\n<Mira> hi </Mira>\n</NPCs>") for i in range(5)]
+    conv = analyze_conventions(cards)
+    assert conv["npc_block_cards"] == 5
+    assert conv["multi_character_cards"] == 5
+
+
+def test_per_character_blocks_are_the_group_pattern():
+    group = _card(
+        name="Aria & Mira",
+        description="<Aria>\nAppearance\ntall\nBackstory\ncoast\n</Aria>\n<Mira>\nAppearance\nshort\nBackstory\ncity\n</Mira>",
+    )
+    conv = analyze_conventions([group] * 5)
+    assert conv["per_character_block_cards"] == 5
+    note = "\n".join(build_cast_note(conv))
+    assert note == ""  # every card is a group here, so there is no choice to explain
+
+
+def test_cast_note_leads_with_the_per_character_block_pattern():
+    solo = [_card(name=f"S{i}", description=_BARE_DOSSIER) for i in range(6)]
+    group = [
+        _card(
+            name=f"A{i} & B{i}",
+            description="<A>\nAppearance\ntall\nBackstory\ncoast\n</A>\n<B>\nAppearance\nshort\nBackstory\ncity\n</B>",
+        )
+        for i in range(4)
+    ]
+    lines = build_cast_note(analyze_conventions(solo + group))
+    assert "own complete `<Name>`" in lines[2]
+    assert "one-line sketch" in lines[2]
+
+
+def test_group_skeleton_shows_repeating_the_block_per_character():
+    group = [
+        _card(
+            name=f"A{i} & B{i}",
+            description="<A>\nAppearance\ntall\nBackstory\ncoast\n</A>\n<B>\nAppearance\nshort\nBackstory\ncity\n</B>",
+        )
+        for i in range(5)
+    ]
+    skeleton = build_description_skeleton(analyze_conventions(group))
+    assert "<SecondName>" in skeleton
+    assert "repeat the same block per character" in skeleton

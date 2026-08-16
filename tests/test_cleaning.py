@@ -94,3 +94,35 @@ def test_plain_prose_is_left_alone():
     cleaned, removed = strip_bloat(text)
     assert cleaned == text
     assert removed == 0
+
+
+# --- line endings ---------------------------------------------------------
+# Cards arrive from every platform, and a trailing "\r" silently defeats
+# every end-of-line anchor downstream (section headers, decorative lines).
+
+
+def test_crlf_and_bare_cr_become_lf():
+    cleaned, _ = strip_bloat("one\r\ntwo\rthree\nfour")
+    assert cleaned == "one\ntwo\nthree\nfour"
+    assert "\r" not in cleaned
+
+
+def test_normalised_line_endings_are_not_counted_as_stripped_bloat():
+    # Dropping a "\r" is an encoding fix, not markup removal - counting it
+    # would inflate the "markup removed" figure the export reports.
+    _cleaned, removed = strip_bloat("a\r\nb\r\nc")
+    assert removed == 0
+
+
+def test_decorative_lines_are_stripped_even_with_crlf_endings():
+    cleaned, _ = strip_bloat("Intro\r\n--------\r\nOutro")
+    assert "--------" not in cleaned
+
+
+def test_section_headers_survive_crlf_input():
+    # The regression this guards: ">Appearance\r" stops matching a
+    # `^>...$` anchor, which hid 74 of 188 headers in a real corpus.
+    from cardpack.conventions import _section_headers
+
+    cleaned, _ = strip_bloat(">Appearance\r\n+ tall\r\n>Personality\r\n+ warm")
+    assert [n for _m, n in _section_headers(cleaned)] == ["Appearance", "Personality"]
