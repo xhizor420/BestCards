@@ -47,9 +47,12 @@ def test_compact_is_smaller_than_markdown_for_same_card():
 
 
 def test_compact_smaller_than_json_for_same_data():
-    card = _sample_card()
-    compact = to_compact([card], full=False, max_chars=600)
-    as_json = to_json([card], full=True)
+    # Measured over a real-sized corpus: both formats carry the same fixed
+    # preamble/template overhead, so the per-card encoding is what the
+    # claim is actually about and a single card can't show it.
+    cards = [_sample_card(name=f"C{i:02}") for i in range(20)]
+    compact = to_compact(cards, full=False, max_chars=600)
+    as_json = to_json(cards, full=True)
     assert len(compact) < len(as_json)
 
 
@@ -373,9 +376,12 @@ def _numbered_cards(n, body_chars=3000):
 
 def test_first_cards_are_untrimmed_and_later_ones_are_trimmed():
     out = to_markdown(_numbered_cards(6), full=False, max_chars=100, full_top=3)
-    # Split at the response template, which itself mentions "## Card i/N".
-    body = out.split("WRITING THE NEW CHARACTER")[0]
-    per_card = body.split("## Card ")[1:]
+    # The template brackets the cards - it is emitted before them and
+    # again after - so the card body is the slice between the two copies.
+    body = out.split("WRITING THE NEW CHARACTER")[1]
+    # Anchored to line start: the template mentions '"## Card i/N" headers'
+    # inline, which a plain substring split would count as a card.
+    per_card = re.split(r"^## Card ", body, flags=re.M)[1:]
     assert len(per_card) == 6
     for section in per_card[:3]:
         assert "[truncated]" not in section, "a top-tier card was trimmed"
@@ -385,8 +391,8 @@ def test_first_cards_are_untrimmed_and_later_ones_are_trimmed():
 
 def test_full_top_applies_to_compact_too():
     out = to_compact(_numbered_cards(4), full=False, max_chars=100, full_top=2)
-    body = out.split("=== WRITING THE NEW CHARACTER")[0]
-    per_card = body.split("=== CARD ")[1:]
+    body = out.split("=== WRITING THE NEW CHARACTER")[1]
+    per_card = re.split(r"^=== CARD ", body, flags=re.M)[1:]
     assert [("[truncated]" in s) for s in per_card] == [False, False, True, True]
 
 
@@ -415,3 +421,30 @@ def test_estimate_matches_the_tiered_export():
     result = estimate_export(cards, format="md", full=False, max_chars=100, full_top=2)
     # The untrimmed top-tier cards must cost visibly more than trimmed ones.
     assert result["cards"][0]["tokens"] > result["cards"][5]["tokens"] * 3
+
+
+def test_response_template_brackets_the_cards_at_both_ends():
+    # A large export rarely reaches a model whole - it gets truncated or
+    # chunk-retrieved - and instructions living only after the last card
+    # are the first thing lost. So they open the file as well.
+    out = to_markdown(_numbered_cards(4))
+    assert out.count("WRITING THE NEW CHARACTER") == 2
+    first = out.index("WRITING THE NEW CHARACTER")
+    last = out.rindex("WRITING THE NEW CHARACTER")
+    first_card = re.search(r"^## Card 1/4", out, re.M).start()
+    last_card = re.search(r"^## Card 4/4", out, re.M).start()
+    assert first < first_card < last_card < last
+
+    compact = to_compact(_numbered_cards(4))
+    assert compact.count("WRITING THE NEW CHARACTER") == 2
+
+
+def test_preamble_points_at_both_copies_of_the_template():
+    out = to_markdown(_numbered_cards(3))
+    assert "both immediately below and again at the very end" in out
+    assert "repeated verbatim at the end of this file" in out
+
+
+def test_estimate_reports_a_context_warning_only_when_oversized():
+    small = estimate_export(_numbered_cards(2), format="md")
+    assert small["context_warning"] == []

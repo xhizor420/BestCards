@@ -194,6 +194,63 @@ def build_corpus_stats(cards: Iterable[Card], *, include_tags: bool = True) -> d
     }
 
 
+# Where an export stops fitting in one prompt. Current long-context chat
+# models cluster around 128k tokens, and the practical ceiling is lower
+# still: the reply needs room, and file attachments in chat UIs are often
+# chunk-retrieved rather than passed whole. This is a warning threshold,
+# never a cap - the corpus is the user's to size.
+CONTEXT_BUDGET_TOKENS = 128_000
+
+
+def context_warning(token_count: int, *, card_count: int) -> list[str]:
+    """Advice lines when an export is too big to be read in one prompt.
+
+    A 113-card corpus of full 8,000-character dossiers comes to roughly
+    394,000 tokens - triple what the models this is aimed at can hold. The
+    failure is quiet and easy to misread: the model answers from whatever
+    fragment it did see, which looks exactly like it ignoring the format.
+    So say it plainly, and give the levers rather than silently shrinking
+    a corpus the user deliberately assembled.
+    """
+    if token_count <= CONTEXT_BUDGET_TOKENS:
+        return []
+    over = token_count / CONTEXT_BUDGET_TOKENS
+    lines = [
+        f"NOTE: this export is ~{token_count:,} tokens — about {over:.1f}× the ~"
+        f"{CONTEXT_BUDGET_TOKENS:,}-token context most current models top out at.",
+        "  It may be truncated or only partly retrieved, and a model answering from a "
+        "fragment looks the same as one ignoring your instructions.",
+        "  The response template is written at BOTH ends of the file so it survives a cut, "
+        "but the cards in the middle are still at risk. To bring it down:",
+        "    --full-top 15           keep every card, show the 15 best complete and trim the rest",
+        "    --max-chars 1500        raise the trim cap if 600 cuts too much from the rest",
+    ]
+    if card_count > 40:
+        lines.append(
+            f"    --best 40               keep only the 40 most instructive cards (of {card_count})"
+        )
+    return lines
+
+
+def context_warning_ui(token_count: int, *, card_count: int) -> list[str]:
+    """Same warning as context_warning(), pointed at the UI's controls."""
+    if token_count <= CONTEXT_BUDGET_TOKENS:
+        return []
+    over = token_count / CONTEXT_BUDGET_TOKENS
+    lines = [
+        f"This export is ~{token_count:,} tokens — about {over:.1f}× the ~"
+        f"{CONTEXT_BUDGET_TOKENS:,} tokens most current models can read at once.",
+        "It may be truncated or only partly retrieved, and a model answering from a fragment "
+        "looks the same as one ignoring your instructions.",
+        "The response template is written at both ends of the file so it survives a cut. To "
+        'bring the size down, untick "No truncation" and keep your best cards complete with '
+        '"Show best N cards in full" — every card stays in the file either way.',
+    ]
+    if card_count > 40:
+        lines.append(f"Removing cards with ✕ also works: you have {card_count}.")
+    return lines
+
+
 def format_stats_block(stats: dict, *, compact: bool = False) -> str:
     if compact:
         parts = [f"n={stats['count']}"]

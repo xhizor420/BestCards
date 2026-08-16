@@ -55,7 +55,13 @@ from .conventions import (
     build_style_sections,
 )
 from .selection import exemplar_names
-from .stats import DEFAULT_TOKENIZER, build_corpus_stats, count_tokens, format_stats_block
+from .stats import (
+    DEFAULT_TOKENIZER,
+    build_corpus_stats,
+    context_warning_ui,
+    count_tokens,
+    format_stats_block,
+)
 
 # Fields whose text can be huge relative to how useful they are for
 # cross-card pattern analysis. In digest (non --full) mode we cap them.
@@ -117,8 +123,29 @@ _CORPUS_PREAMBLE = (
     "below, as a target: let your OWN character concept's actual complexity "
     "decide how long it needs to be, shorter or longer than what's typical "
     "in this corpus. Read every card below before responding — the response "
-    "format you must use is given at the very end of this file, after the "
-    "last card."
+    "format you must use appears both immediately below and again at the very "
+    "end of this file; the two copies are identical."
+)
+
+# The template is emitted TWICE - once before the cards, once after them -
+# and the duplication is deliberate.
+#
+# End position is where format instructions have the most leverage: it's
+# the last thing read before responding. But a real corpus runs to
+# hundreds of thousands of tokens, and files that size rarely reach a
+# model whole. Chat UIs truncate them, attachment pipelines chunk and
+# retrieve only some passages, and long-context attention thins out in
+# the middle. In every one of those failure modes, instructions that
+# exist ONLY after the last card are the first thing lost - and losing
+# them looks exactly like a model ignoring the format, which is the
+# complaint that motivated the template in the first place.
+#
+# So it opens the file too. The cost is a fraction of a percent of a
+# large export, and it means no single truncation point can strip the
+# instructions.
+_TEMPLATE_REPEAT_NOTE = (
+    "The same instructions are repeated verbatim at the end of this file, after the last "
+    "card. Read the cards in between before you use them."
 )
 
 # Placed at the very end of the file (after every card), not in the
@@ -470,6 +497,15 @@ def to_markdown(
         filled = ", ".join(f"{name} {coverage.get(key, 0)}/{len(cards)}" for key, name in _COVERAGE_LABELS)
         lines.append(f"- Field coverage: {filled}")
     lines.append("")
+    template = _build_response_template_md(cards)
+    if cards:
+        lines.append("---")
+        lines.append("")
+        lines.append(template)
+        lines.append(f"*{_TEMPLATE_REPEAT_NOTE}*")
+        lines.append("")
+        lines.append("---")
+        lines.append("")
     for i, card in enumerate(cards, 1):
         lines.extend(
             _markdown_card_lines(
@@ -477,7 +513,7 @@ def to_markdown(
             )
         )
     body = "\n".join(lines).rstrip() + "\n"
-    template_block = f"\n\n---\n\n{_build_response_template_md(cards)}"
+    template_block = f"\n\n---\n\n{template}"
     # Counted over body + template together so this number matches what
     # estimate_export()/the UI report for the same file - both cover the
     # complete file, not just the reference-data portion.
@@ -560,6 +596,9 @@ def to_compact(
             f"breadth only. Stats and conventions cover all {len(cards)}."
         )
     lines += [f"Stats: {stats_line}", ""]
+    template = _build_response_template_compact(cards)
+    if cards:
+        lines += [template, f"({_TEMPLATE_REPEAT_NOTE})", ""]
     for i, card in enumerate(cards, 1):
         lines.extend(
             _compact_card_lines(
@@ -567,7 +606,7 @@ def to_compact(
             )
         )
     body = "\n".join(lines).rstrip() + "\n"
-    template_block = f"\n\n{_build_response_template_compact(cards)}\n"
+    template_block = f"\n\n{template}\n"
     tc = count_tokens(body + template_block, tokenizer)
     return body + f"\n# {tc.count:,} tokens ({tc.method})" + template_block
 
@@ -734,4 +773,12 @@ def estimate_export(
         card_tc = count_tokens(block, tokenizer)
         per_card.append({"index": i, "name": card.name or card.nickname or "(unnamed)", "tokens": card_tc.count})
 
-    return {"total_tokens": total_tc.count, "method": total_tc.method, "cards": per_card}
+    return {
+        "total_tokens": total_tc.count,
+        "method": total_tc.method,
+        "cards": per_card,
+        # Empty unless the export outgrows a single prompt. Phrased for the
+        # UI's controls rather than the CLI's flags, since that's where the
+        # reader is when they see it.
+        "context_warning": context_warning_ui(total_tc.count, card_count=len(cards)),
+    }

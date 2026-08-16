@@ -8,7 +8,7 @@ from .cardspec import Card, CardExtractionError, parse_card_payload
 from .formats import ALL_EXTRA_FIELDS, DEFAULT_EXTRA_FIELDS, WRITERS, normalize_extra_fields
 from .png_chunks import NotAPngError, read_text_chunks_from_file
 from .selection import rank_cards, select_best
-from .stats import TOKENIZER_PRESETS, count_tokens
+from .stats import TOKENIZER_PRESETS, context_warning, count_tokens
 
 
 def _gather_png_paths(inputs: list[str], recursive: bool) -> list[Path]:
@@ -204,6 +204,12 @@ def main(argv: list[str] | None = None) -> int:
         print("  (fell back to the heuristic - see the message above for why)")
     elif not tc.exact:
         print("  (pass --tokenizer deepseek|glm|gpt for an exact count; see --help for details)")
+
+    size_notes = context_warning(tc.count, card_count=len(cards))
+    if size_notes:
+        print()
+        for note in size_notes:
+            print(note)
 
     # Truncation is silent by default, and on a corpus of long structured
     # cards it can hide most of what the export is trying to teach - a

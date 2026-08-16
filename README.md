@@ -237,6 +237,43 @@ the block repeating:
 > the same sections at the same depth as a solo card. Nobody is reduced to
 > a one-line sketch — that's what makes these read as a real cast.
 
+#### The template brackets the cards, at both ends
+
+The response template is emitted **twice** — once before the first card,
+once after the last — and the duplication is deliberate.
+
+End position is where format instructions have the most leverage: it's the
+last thing read before responding. But a real corpus runs to hundreds of
+thousands of tokens, and files that size rarely reach a model whole. Chat
+UIs truncate them, attachment pipelines chunk and retrieve only some
+passages, and long-context attention thins in the middle. In every one of
+those cases, instructions that exist *only* after the last card are the
+first thing lost — and losing them looks exactly like a model ignoring the
+format, which is the complaint that motivated the template in the first
+place. Two copies cost a fraction of a percent of a large export and mean
+no single cut point can strip them.
+
+#### When the corpus outgrows a single prompt
+
+113 cards of full 8,000-character dossiers comes to **~394,000 tokens** —
+roughly 3× what current long-context models read at once. Nothing errors;
+the model just answers from whatever fragment reached it, which is
+indistinguishable from it ignoring your instructions.
+
+So the CLI and the UI both say so above ~128k tokens, with the levers
+rather than a silent shrink — the corpus is yours to size:
+
+```
+NOTE: this export is ~394,020 tokens — about 3.1× the ~128,000-token context
+most current models top out at.
+  --full-top 15       keep every card, show the 15 best complete and trim the rest
+  --max-chars 1500    raise the trim cap if 600 cuts too much from the rest
+  --best 40           keep only the 40 most instructive cards (of 113)
+```
+
+The UI shows the same thing in its own vocabulary ("untick No truncation",
+"Show best N cards in full", "remove cards with ✕").
+
 ### Depth *and* breadth — how a 100+ card corpus stays usable
 
 A flat truncation cap forces a false choice. Measured on a real 57-card

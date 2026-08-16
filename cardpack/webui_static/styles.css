@@ -318,3 +318,14 @@ button {
 }
 
 .hidden { display: none !important; }
+
+.context-warning {
+  margin: -0.5rem 0 1rem;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid var(--danger);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--danger) 8%, var(--surface));
+  color: var(--text);
+  font-size: 0.88rem;
+  line-height: 1.45;
+}

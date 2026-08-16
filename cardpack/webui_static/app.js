@@ -28,6 +28,7 @@ const fullTopInput = document.getElementById("fullTopInput");
 const fieldCheckboxes = Array.from(document.querySelectorAll(".field-checkbox"));
 const totalTokensEl = document.getElementById("totalTokens");
 const tokenMethodEl = document.getElementById("tokenMethod");
+const contextWarningEl = document.getElementById("contextWarning");
 const cardGrid = document.getElementById("cardGrid");
 const exportBtn = document.getElementById("exportBtn");
 const exportResult = document.getElementById("exportResult");
@@ -247,10 +248,27 @@ function shortMethodLabel(method) {
   return method.startsWith("heuristic") ? "(estimate - see title for why)" : "(exact)";
 }
 
+// A corpus of full-length dossiers runs well past what any current model
+// can read in one prompt (113 cards came to ~394k tokens against a ~128k
+// ceiling). The failure is quiet - the model answers from whatever it did
+// see, which looks identical to it ignoring the instructions - so the
+// number alone isn't enough; say what it means and what to do about it.
+function renderContextWarning(data) {
+  const notes = data.context_warning || [];
+  if (!notes.length) {
+    contextWarningEl.classList.add("hidden");
+    contextWarningEl.textContent = "";
+    return;
+  }
+  contextWarningEl.textContent = notes.join(" ");
+  contextWarningEl.classList.remove("hidden");
+}
+
 async function refreshEstimate() {
   if (!entries.length) {
     totalTokensEl.textContent = "0";
     tokenMethodEl.textContent = "";
+    contextWarningEl.classList.add("hidden");
     return;
   }
   const requestId = ++estimateRequestId;
@@ -267,6 +285,7 @@ async function refreshEstimate() {
     totalTokensEl.textContent = data.total_tokens.toLocaleString();
     tokenMethodEl.textContent = shortMethodLabel(data.method);
     tokenMethodEl.title = data.method;
+    renderContextWarning(data);
     // The server returns cards in export order (ranked, pins first), so
     // map them back onto tiles by name to label the full-depth tier.
     const fullTop = fullCheckbox.checked ? data.cards.length : currentExportOptions().full_top;

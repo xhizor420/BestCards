@@ -122,3 +122,42 @@ def test_stats_skip_the_cast_line_when_every_card_is_the_same_shape():
     stats = build_corpus_stats([_card(name="Aria"), _card(name="Zed")])
     assert "built around a group" not in format_stats_block(stats)
     assert "cast=" not in format_stats_block(stats, compact=True)
+
+
+# --- context budget -------------------------------------------------------
+# A corpus of full-length dossiers outgrows what any current model can read
+# in one prompt, and the failure is quiet: the model answers from whatever
+# fragment reached it, which looks like it ignoring the instructions.
+
+
+def test_no_context_warning_for_an_export_that_fits():
+    from cardpack.stats import CONTEXT_BUDGET_TOKENS, context_warning, context_warning_ui
+
+    assert context_warning(CONTEXT_BUDGET_TOKENS, card_count=113) == []
+    assert context_warning_ui(1000, card_count=5) == []
+
+
+def test_context_warning_states_the_overage_and_the_levers():
+    from cardpack.stats import context_warning
+
+    notes = "\n".join(context_warning(394_000, card_count=113))
+    assert "394,000 tokens" in notes
+    assert "3.1×" in notes
+    assert "--full-top" in notes
+    assert "--best 40" in notes  # offered only when there are cards to drop
+
+
+def test_context_warning_omits_the_drop_cards_lever_for_a_small_corpus():
+    from cardpack.stats import context_warning
+
+    notes = "\n".join(context_warning(400_000, card_count=12))
+    assert "--best" not in notes
+    assert "--full-top" in notes
+
+
+def test_ui_warning_names_ui_controls_not_cli_flags():
+    from cardpack.stats import context_warning_ui
+
+    notes = "\n".join(context_warning_ui(394_000, card_count=113))
+    assert "--" not in notes
+    assert "Show best N cards in full" in notes
