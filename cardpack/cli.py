@@ -5,7 +5,14 @@ import sys
 from pathlib import Path
 
 from .cardspec import Card, CardExtractionError, parse_card_payload
-from .formats import ALL_EXTRA_FIELDS, DEFAULT_EXTRA_FIELDS, WRITERS, normalize_extra_fields
+from .formats import (
+    ALL_EXTRA_FIELDS,
+    CAPPABLE_FIELDS,
+    DEFAULT_EXTRA_FIELDS,
+    WRITERS,
+    normalize_extra_fields,
+    normalize_field_caps,
+)
 from .png_chunks import NotAPngError, read_text_chunks_from_file
 from .selection import rank_cards, select_best
 from .stats import TOKENIZER_PRESETS, context_warning, count_tokens
@@ -76,6 +83,19 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=600,
         help="Per-field character cap when not using --full (default: 600).",
+    )
+    parser.add_argument(
+        "--cap",
+        action="append",
+        metavar="FIELD=CHARS",
+        default=[],
+        help=(
+            "Ceiling for ONE field, applied to every card including the untrimmed top tier "
+            "(repeatable). Use it when one field dominates the export but isn't what you want "
+            "taught: on a real corpus, descriptions were 73%% of the file and first messages "
+            "21%%, so --cap first_mes=1500 frees room for more cards without touching a single "
+            "description. Fields: " + ", ".join(CAPPABLE_FIELDS) + "."
+        ),
     )
     parser.add_argument(
         "--fields",
@@ -177,6 +197,10 @@ def main(argv: list[str] | None = None) -> int:
         cards = select_best(cards, args.best)
 
     extra_fields = normalize_extra_fields(args.fields)
+    field_caps = normalize_field_caps(args.cap)
+    ignored = [c for c in args.cap if c.split("=", 1)[0].strip().lower() not in field_caps]
+    if ignored:
+        print(f"Ignored unrecognized --cap value(s): {', '.join(ignored)}", file=sys.stderr)
     writer = WRITERS[args.format]
     output_text = writer(
         cards,
@@ -185,6 +209,7 @@ def main(argv: list[str] | None = None) -> int:
         extra_fields=extra_fields,
         tokenizer=args.tokenizer,
         full_top=args.full_top,
+        field_caps=field_caps,
     )
     Path(args.output).write_text(output_text, encoding="utf-8")
 

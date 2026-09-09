@@ -410,6 +410,66 @@ def _basename(path: str) -> str:
     return os.path.basename(path) if path else ""
 
 
+# Fields a per-field ceiling can apply to, by their Card attribute name.
+CAPPABLE_FIELDS = (
+    "description",
+    "personality",
+    "scenario",
+    "first_mes",
+    "mes_example",
+    "creator_notes",
+    "system_prompt",
+    "post_history_instructions",
+    "alt_greetings",
+    "lorebook",
+)
+
+
+def normalize_field_caps(value) -> dict[str, int]:
+    """Accepts {"first_mes": 1200} or ["first_mes=1200", ...].
+
+    Unknown names and unparseable numbers are dropped rather than raising,
+    matching normalize_extra_fields: this is fed by both CLI text and UI
+    inputs, and a typo shouldn't abort a batch.
+    """
+    if not value:
+        return {}
+    raw_pairs = value.items() if isinstance(value, dict) else [str(v).split("=", 1) for v in value]
+    caps: dict[str, int] = {}
+    for pair in raw_pairs:
+        pair = tuple(pair)
+        if len(pair) != 2:
+            continue
+        name = str(pair[0]).strip().lower()
+        if name not in CAPPABLE_FIELDS:
+            continue
+        try:
+            n = int(str(pair[1]).strip())
+        except (TypeError, ValueError):
+            continue
+        if n > 0:
+            caps[name] = n
+    return caps
+
+
+def _field_cap(field: str, cap: int | None, field_caps: dict[str, int]) -> int | None:
+    """The tighter of the card's tier cap and any explicit per-field ceiling.
+
+    A per-field ceiling applies to EVERY card, including ones in the
+    untrimmed top tier - that is the point of it. On a real 33-card
+    corpus, descriptions were 73% of the export and first messages 21%,
+    and the descriptions are what teach structure. Thirty-three complete
+    opening messages teach little more than ten do, but the tier control
+    couldn't separate them: it made a card wholly full or wholly trimmed.
+    Capping one field independently buys room for more curated cards at
+    the same token cost.
+    """
+    hard = field_caps.get(field)
+    if hard is None:
+        return cap
+    return hard if cap is None else min(cap, hard)
+
+
 def _cap_for_rank(index: int, cap: int | None, full_top: int) -> int | None:
     """None (untrimmed) for the first `full_top` cards, else `cap`.
 
@@ -421,24 +481,35 @@ def _cap_for_rank(index: int, cap: int | None, full_top: int) -> int | None:
 
 
 def _markdown_card_lines(
-    i: int, total: int, card: Card, cap: int | None, *, extra_fields: frozenset[str]
+    i: int,
+    total: int,
+    card: Card,
+    cap: int | None,
+    *,
+    extra_fields: frozenset[str],
+    field_caps: dict[str, int] | None = None,
 ) -> list[str]:
+    fc = field_caps or {}
+
+    def cut(field: str, text: str) -> str:
+        return _truncate(_clean(text), _field_cap(field, cap, fc))
+
     title = card.name or card.nickname or "(unnamed)"
     lines = [f"## Card {i}/{total}: {title}", f"- (file: {_basename(card.source_file)})"]
     if "tags" in extra_fields and card.tags:
         lines.append(f"- Tags: {', '.join(card.tags)}")
     if card.description:
-        lines.append(f"- Description: {_truncate(_clean(card.description), cap)}")
+        lines.append(f"- Description: {cut('description', card.description)}")
     if card.personality:
-        lines.append(f"- Personality: {_truncate(_clean(card.personality), cap)}")
+        lines.append(f"- Personality: {cut('personality', card.personality)}")
     if card.scenario:
-        lines.append(f"- Scenario: {_truncate(_clean(card.scenario), cap)}")
+        lines.append(f"- Scenario: {cut('scenario', card.scenario)}")
     if card.first_mes:
-        lines.append(f"- First message: {_truncate(_clean(card.first_mes), cap)}")
+        lines.append(f"- First message: {cut('first_mes', card.first_mes)}")
     if card.mes_example:
-        lines.append(f"- Example dialogue: {_truncate(_clean(card.mes_example), cap)}")
+        lines.append(f"- Example dialogue: {cut('mes_example', card.mes_example)}")
     if "creator_notes" in extra_fields and card.creator_notes:
-        lines.append(f"- Creator notes: {_truncate(_clean(card.creator_notes), cap)}")
+        lines.append(f"- Creator notes: {cut('creator_notes', card.creator_notes)}")
     # Opting a field in always yields its CONTENT (truncated per `cap`).
     # These list/extra fields used to collapse to a bare count unless
     # `full` was also set, which made checking e.g. "Lorebook" in the UI
@@ -447,17 +518,16 @@ def _markdown_card_lines(
     if "alt_greetings" in extra_fields and card.alternate_greetings:
         lines.append(f"- Alt greetings ({len(card.alternate_greetings)}):")
         for g in card.alternate_greetings:
-            lines.append(f"  - {_truncate(_clean(g), cap)}")
+            lines.append(f"  - {cut('alt_greetings', g)}")
     if "system_prompt" in extra_fields and card.system_prompt:
-        lines.append(f"- System prompt: {_truncate(_clean(card.system_prompt), cap)}")
+        lines.append(f"- System prompt: {cut('system_prompt', card.system_prompt)}")
     if "post_history_instructions" in extra_fields and card.post_history_instructions:
-        lines.append(f"- Post-history instructions: {_truncate(_clean(card.post_history_instructions), cap)}")
+        lines.append(f"- Post-history instructions: {cut('post_history_instructions', card.post_history_instructions)}")
     if "lorebook" in extra_fields and card.lorebook_entries:
         lines.append(f"- Lorebook ({len(card.lorebook_entries)} entries):")
         for entry in card.lorebook_entries:
             keys = ", ".join(entry.get("keys") or [])
-            content = _truncate(_clean(entry.get("content", "")), cap)
-            lines.append(f"  - [{keys}] {content}")
+            lines.append(f"  - [{keys}] {cut('lorebook', entry.get('content', ''))}")
     lines.append("")
     return lines
 
@@ -470,10 +540,12 @@ def to_markdown(
     extra_fields=DEFAULT_EXTRA_FIELDS,
     tokenizer: str = DEFAULT_TOKENIZER,
     full_top: int = _DEFAULT_FULL_TOP,
+    field_caps=None,
 ) -> str:
     cards = list(cards)
     cap = None if full else max_chars
     extra_fields = normalize_extra_fields(extra_fields)
+    fcaps = normalize_field_caps(field_caps)
     lines: list[str] = []
     lines.append(f"# Character Reference Corpus ({len(cards)} cards)")
     lines.append("")
@@ -509,7 +581,7 @@ def to_markdown(
     for i, card in enumerate(cards, 1):
         lines.extend(
             _markdown_card_lines(
-                i, len(cards), card, _cap_for_rank(i, cap, full_top), extra_fields=extra_fields
+                i, len(cards), card, _cap_for_rank(i, cap, full_top), extra_fields=extra_fields, field_caps=fcaps
             )
         )
     body = "\n".join(lines).rstrip() + "\n"
@@ -522,7 +594,13 @@ def to_markdown(
 
 
 def _compact_card_lines(
-    i: int, total: int, card: Card, cap: int | None, *, extra_fields: frozenset[str]
+    i: int,
+    total: int,
+    card: Card,
+    cap: int | None,
+    *,
+    extra_fields: frozenset[str],
+    field_caps: dict[str, int] | None = None,
 ) -> list[str]:
     """Labels here are short but spelled out (Name/Desc/Personality/...),
     not single-letter codes (N/D/P/...). The letter codes this format used
@@ -534,22 +612,27 @@ def _compact_card_lines(
     either. Spelled-out words read as plain labels, not a format to copy,
     while still costing only a few characters more than the letter codes
     did."""
+    fc = field_caps or {}
+
+    def cut(field: str, text: str) -> str:
+        return _truncate(_clean(text), _field_cap(field, cap, fc))
+
     title = card.name or card.nickname or "(unnamed)"
     lines = [f"=== CARD {i}/{total} ===", f"Name: {title}"]
     if "tags" in extra_fields and card.tags:
         lines.append(f"Tags: {', '.join(card.tags)}")
     if card.description:
-        lines.append(f"Desc: {_truncate(_clean(card.description), cap)}")
+        lines.append(f"Desc: {cut('description', card.description)}")
     if card.personality:
-        lines.append(f"Personality: {_truncate(_clean(card.personality), cap)}")
+        lines.append(f"Personality: {cut('personality', card.personality)}")
     if card.scenario:
-        lines.append(f"Scenario: {_truncate(_clean(card.scenario), cap)}")
+        lines.append(f"Scenario: {cut('scenario', card.scenario)}")
     if card.first_mes:
-        lines.append(f"Greeting: {_truncate(_clean(card.first_mes), cap)}")
+        lines.append(f"Greeting: {cut('first_mes', card.first_mes)}")
     if card.mes_example:
-        lines.append(f"Example: {_truncate(_clean(card.mes_example), cap)}")
+        lines.append(f"Example: {cut('mes_example', card.mes_example)}")
     if "creator_notes" in extra_fields and card.creator_notes:
-        lines.append(f"Notes: {_truncate(_clean(card.creator_notes), cap)}")
+        lines.append(f"Notes: {cut('creator_notes', card.creator_notes)}")
     # As in _markdown_card_lines: an opted-in field always yields its
     # content. Previously alt_greetings/lorebook printed only a bare count
     # here (never their text, even with `full`), and system_prompt /
@@ -559,17 +642,16 @@ def _compact_card_lines(
     if "alt_greetings" in extra_fields and card.alternate_greetings:
         lines.append(f"AltGreetings ({len(card.alternate_greetings)}):")
         for g in card.alternate_greetings:
-            lines.append(f"- {_truncate(_clean(g), cap)}")
+            lines.append(f"- {cut('alt_greetings', g)}")
     if "lorebook" in extra_fields and card.lorebook_entries:
         lines.append(f"Lorebook ({len(card.lorebook_entries)}):")
         for entry in card.lorebook_entries:
             keys = ", ".join(entry.get("keys") or [])
-            content = _truncate(_clean(entry.get("content", "")), cap)
-            lines.append(f"- [{keys}] {content}")
+            lines.append(f"- [{keys}] {cut('lorebook', entry.get('content', ''))}")
     if "system_prompt" in extra_fields and card.system_prompt:
-        lines.append(f"System: {_truncate(_clean(card.system_prompt), cap)}")
+        lines.append(f"System: {cut('system_prompt', card.system_prompt)}")
     if "post_history_instructions" in extra_fields and card.post_history_instructions:
-        lines.append(f"PostHistory: {_truncate(_clean(card.post_history_instructions), cap)}")
+        lines.append(f"PostHistory: {cut('post_history_instructions', card.post_history_instructions)}")
     lines.append("")
     return lines
 
@@ -582,10 +664,12 @@ def to_compact(
     extra_fields=DEFAULT_EXTRA_FIELDS,
     tokenizer: str = DEFAULT_TOKENIZER,
     full_top: int = _DEFAULT_FULL_TOP,
+    field_caps=None,
 ) -> str:
     cards = list(cards)
     cap = None if full else max_chars
     extra_fields = normalize_extra_fields(extra_fields)
+    fcaps = normalize_field_caps(field_caps)
     stats_line = format_stats_block(build_corpus_stats(cards, include_tags="tags" in extra_fields), compact=True)
     _trimmed = 0 if (full or cap is None) else max(0, len(cards) - max(full_top, 0))
     lines: list[str] = [_CORPUS_PREAMBLE.format(n=len(cards))]
@@ -602,7 +686,7 @@ def to_compact(
     for i, card in enumerate(cards, 1):
         lines.extend(
             _compact_card_lines(
-                i, len(cards), card, _cap_for_rank(i, cap, full_top), extra_fields=extra_fields
+                i, len(cards), card, _cap_for_rank(i, cap, full_top), extra_fields=extra_fields, field_caps=fcaps
             )
         )
     body = "\n".join(lines).rstrip() + "\n"
@@ -612,7 +696,12 @@ def to_compact(
 
 
 def card_to_dict(
-    card: Card, *, full: bool = True, max_chars: int | None = None, extra_fields=ALL_EXTRA_FIELDS
+    card: Card,
+    *,
+    full: bool = True,
+    max_chars: int | None = None,
+    extra_fields=ALL_EXTRA_FIELDS,
+    field_caps=None,
 ) -> dict:
     """Serialize a Card. Every key keeps a STABLE type regardless of
     `full` - strings stay strings, lists stay lists - because this is also
@@ -623,20 +712,21 @@ def card_to_dict(
     `max_chars`) now only control truncation, never shape.
     """
     extra_fields = normalize_extra_fields(extra_fields)
+    fc = normalize_field_caps(field_caps)
     cap = None if full else max_chars
 
-    def _t(text: str) -> str:
-        return _truncate(_clean(text), cap)
+    def _t(text: str, field: str = "") -> str:
+        return _truncate(_clean(text), _field_cap(field, cap, fc))
 
     d = {
         "name": card.name,
         "nickname": card.nickname,
         "character_version": card.character_version,
-        "description": _t(card.description),
-        "personality": _t(card.personality),
-        "scenario": _t(card.scenario),
-        "first_mes": _t(card.first_mes),
-        "mes_example": _t(card.mes_example),
+        "description": _t(card.description, "description"),
+        "personality": _t(card.personality, "personality"),
+        "scenario": _t(card.scenario, "scenario"),
+        "first_mes": _t(card.first_mes, "first_mes"),
+        "mes_example": _t(card.mes_example, "mes_example"),
         "source": card.source,
         "spec_version": card.spec_version,
         "source_keyword": card.source_keyword,
@@ -646,15 +736,15 @@ def card_to_dict(
     if "tags" in extra_fields:
         d["tags"] = card.tags
     if "creator_notes" in extra_fields:
-        d["creator_notes"] = _t(card.creator_notes)
+        d["creator_notes"] = _t(card.creator_notes, "creator_notes")
     if "system_prompt" in extra_fields:
-        d["system_prompt"] = _t(card.system_prompt)
+        d["system_prompt"] = _t(card.system_prompt, "system_prompt")
     if "post_history_instructions" in extra_fields:
-        d["post_history_instructions"] = _t(card.post_history_instructions)
+        d["post_history_instructions"] = _t(card.post_history_instructions, "post_history_instructions")
     if "alt_greetings" in extra_fields:
-        d["alternate_greetings"] = [_t(g) for g in card.alternate_greetings]
+        d["alternate_greetings"] = [_t(g, "alt_greetings") for g in card.alternate_greetings]
     if "lorebook" in extra_fields:
-        d["lorebook_entries"] = [{**e, "content": _t(e.get("content", ""))} for e in card.lorebook_entries]
+        d["lorebook_entries"] = [{**e, "content": _t(e.get("content", ""), "lorebook")} for e in card.lorebook_entries]
     return d
 
 
@@ -666,6 +756,7 @@ def to_json(
     extra_fields=DEFAULT_EXTRA_FIELDS,
     tokenizer: str = DEFAULT_TOKENIZER,
     full_top: int = _DEFAULT_FULL_TOP,
+    field_caps=None,
 ) -> str:
     cards = list(cards)
     extra_fields = normalize_extra_fields(extra_fields)
@@ -687,6 +778,7 @@ def to_json(
                 full=full or i <= full_top,
                 max_chars=max_chars,
                 extra_fields=extra_fields,
+                field_caps=field_caps,
             )
             for i, c in enumerate(cards, 1)
         ],
@@ -741,6 +833,7 @@ def estimate_export(
     extra_fields=DEFAULT_EXTRA_FIELDS,
     tokenizer: str = DEFAULT_TOKENIZER,
     full_top: int = _DEFAULT_FULL_TOP,
+    field_caps=None,
 ) -> dict:
     """Token estimate for the whole export plus each card's own marginal
     contribution (the size of just its section, not shared preamble/stats),
@@ -750,8 +843,10 @@ def estimate_export(
         raise ValueError(f"unknown format {format!r}")
 
     extra_fields = normalize_extra_fields(extra_fields)
+    fcaps = normalize_field_caps(field_caps)
     total_text = WRITERS[format](
-        cards, full=full, max_chars=max_chars, extra_fields=extra_fields, tokenizer=tokenizer, full_top=full_top
+        cards, full=full, max_chars=max_chars, extra_fields=extra_fields, tokenizer=tokenizer,
+        full_top=full_top, field_caps=fcaps,
     )
     total_tc = count_tokens(total_text, tokenizer)
     cap = None if full else max_chars
@@ -760,13 +855,14 @@ def estimate_export(
     for i, card in enumerate(cards, 1):
         rank_cap = _cap_for_rank(i, cap, full_top)
         if format == "compact":
-            block = "\n".join(_compact_card_lines(i, len(cards), card, rank_cap, extra_fields=extra_fields))
+            block = "\n".join(_compact_card_lines(i, len(cards), card, rank_cap, extra_fields=extra_fields, field_caps=fcaps))
         elif format == "md":
-            block = "\n".join(_markdown_card_lines(i, len(cards), card, rank_cap, extra_fields=extra_fields))
+            block = "\n".join(_markdown_card_lines(i, len(cards), card, rank_cap, extra_fields=extra_fields, field_caps=fcaps))
         else:  # json
             block = json.dumps(
                 card_to_dict(
-                    card, full=full or i <= full_top, max_chars=max_chars, extra_fields=extra_fields
+                    card, full=full or i <= full_top, max_chars=max_chars,
+                    extra_fields=extra_fields, field_caps=fcaps,
                 ),
                 ensure_ascii=False,
             )

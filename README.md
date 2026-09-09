@@ -253,6 +253,35 @@ format, which is the complaint that motivated the template in the first
 place. Two copies cost a fraction of a percent of a large export and mean
 no single cut point can strip them.
 
+#### Capping one field without shrinking the rest
+
+Where an export's tokens actually go, measured on a real 33-card corpus:
+
+| | tokens | share |
+| --- | --- | --- |
+| Descriptions | 79,492 | **73%** |
+| First messages | 22,384 | **21%** |
+| Scenarios | 2,734 | 3% |
+| Preamble, stats, both template copies | 4,272 | 4% |
+
+Descriptions are the 73% that teaches structure — worth every token. But
+33 complete opening messages teach little more than 10 do, and `--full-top`
+couldn't separate them: it makes a card *wholly* full or *wholly* trimmed.
+
+`--cap FIELD=CHARS` (repeatable; "Cap first messages at" in the UI) sets a
+ceiling for one field that applies to **every** card, the untrimmed top
+tier included — that's the point of it. `--full --cap first_mes=1500`
+leaves all 33 descriptions complete at their full 14,000 characters and
+frees ~8,000 tokens, which is room for two or three more curated cards at
+the same cost. Cappable: `description`, `personality`, `scenario`,
+`first_mes`, `mes_example`, `creator_notes`, `system_prompt`,
+`post_history_instructions`, `alt_greetings`, `lorebook`. The ceiling
+never *loosens* an existing cap — the tighter of the two wins — and
+unknown names are reported and ignored rather than aborting a batch.
+
+Detected conventions are measured before any truncation, so capping a
+field never changes what the house-style block reports about it.
+
 #### When the corpus outgrows a single prompt
 
 113 cards of full 8,000-character dossiers comes to **~394,000 tokens** —

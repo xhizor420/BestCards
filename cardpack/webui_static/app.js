@@ -25,6 +25,7 @@ const maxCharsLabel = document.getElementById("maxCharsLabel");
 const maxCharsInput = document.getElementById("maxCharsInput");
 const fullTopLabel = document.getElementById("fullTopLabel");
 const fullTopInput = document.getElementById("fullTopInput");
+const firstMesCapInput = document.getElementById("firstMesCapInput");
 const fieldCheckboxes = Array.from(document.querySelectorAll(".field-checkbox"));
 const totalTokensEl = document.getElementById("totalTokens");
 const tokenMethodEl = document.getElementById("tokenMethod");
@@ -236,6 +237,11 @@ function currentExportOptions() {
     fields: fieldCheckboxes.filter((cb) => cb.checked).map((cb) => cb.value),
     tokenizer: tokenizerSelect.value,
     full_top: Math.max(0, parseInt(fullTopInput.value, 10) || 0),
+    // Applies to every card, including the untrimmed top tier. On a real
+    // corpus first messages were 21% of the file while descriptions - the
+    // part that teaches structure - were 73%, so capping this one field
+    // buys room for more cards without touching a single description.
+    field_caps: firstMesCap() ? { first_mes: firstMesCap() } : {},
     pinned: Array.from(pinned),
   };
 }
@@ -262,6 +268,11 @@ function renderContextWarning(data) {
   }
   contextWarningEl.textContent = notes.join(" ");
   contextWarningEl.classList.remove("hidden");
+}
+
+function firstMesCap() {
+  const n = parseInt(firstMesCapInput.value, 10);
+  return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
 async function refreshEstimate() {
@@ -407,6 +418,7 @@ sortSelect.addEventListener("change", refreshEstimate);
 tokenizerSelect.addEventListener("change", refreshEstimate);
 maxCharsInput.addEventListener("input", debouncedEstimate);
 fullTopInput.addEventListener("input", debouncedEstimate);
+firstMesCapInput.addEventListener("input", debouncedEstimate);
 fieldCheckboxes.forEach((cb) => cb.addEventListener("change", refreshEstimate));
 updateMaxCharsVisibility();
 

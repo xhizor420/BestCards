@@ -9,6 +9,7 @@ serves a single-page app and two JSON endpoints:
   POST /api/export                    body = JSON
       {"cards": [...], "format": "md"|"compact"|"json", "full": bool,
        "max_chars": int, "sort": "best"|"name"|"file", "fields": ["tags", ...],
+       "field_caps": {"first_mes": 1500, ...},
        "tokenizer": "heuristic"|"gpt"|"deepseek"|"glm"|"org/repo",
        "pinned": ["file.png", ...]  # forced into the full-depth tier}
       -> {"filename": "...", "content": "..."}
@@ -124,6 +125,7 @@ class Handler(BaseHTTPRequestHandler):
             fields = payload.get("fields", ["tags"])
             tokenizer = payload.get("tokenizer", "heuristic")
             full_top = int(payload.get("full_top", 10) or 0)
+            field_caps = payload.get("field_caps") or {}
 
             cards = [Card.from_dict(d) for d in payload.get("cards", [])]
             if sort_key == "best":
@@ -142,6 +144,7 @@ class Handler(BaseHTTPRequestHandler):
                 extra_fields=fields,
                 tokenizer=tokenizer,
                 full_top=full_top,
+                field_caps=field_caps,
             )
             filename = f"cards_export.{_EXTENSIONS[fmt]}"
             self._send_json(200, {"filename": filename, "content": content})
@@ -160,6 +163,7 @@ class Handler(BaseHTTPRequestHandler):
             fields = payload.get("fields", ["tags"])
             tokenizer = payload.get("tokenizer", "heuristic")
             full_top = int(payload.get("full_top", 10) or 0)
+            field_caps = payload.get("field_caps") or {}
             cards = [Card.from_dict(d) for d in payload.get("cards", [])]
             cards = apply_pins(rank_cards(cards), payload.get("pinned"))
             result = estimate_export(
@@ -170,6 +174,7 @@ class Handler(BaseHTTPRequestHandler):
                 extra_fields=fields,
                 tokenizer=tokenizer,
                 full_top=full_top,
+                field_caps=field_caps,
             )
             self._send_json(200, result)
         except Exception as e:  # noqa: BLE001

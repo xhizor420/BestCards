@@ -448,3 +448,71 @@ def test_preamble_points_at_both_copies_of_the_template():
 def test_estimate_reports_a_context_warning_only_when_oversized():
     small = estimate_export(_numbered_cards(2), format="md")
     assert small["context_warning"] == []
+
+
+# --- per-field caps -------------------------------------------------------
+# On a real 33-card corpus, descriptions were 73% of the export and first
+# messages 21%. Descriptions are what teach structure; 33 complete opening
+# messages teach little more than 10 do. The tier control couldn't separate
+# them - a card was wholly full or wholly trimmed - so one field needs its
+# own ceiling.
+
+
+def _long_card():
+    return _sample_card(description="D" * 5000, first_mes="F" * 5000)
+
+
+def test_field_cap_trims_only_that_field():
+    out = to_markdown([_long_card()], full=True, field_caps={"first_mes": 500})
+    assert "D" * 5000 in out, "description must be untouched"
+    assert "F" * 5000 not in out
+    assert "F" * 500 in out
+
+
+def test_field_cap_applies_even_inside_the_untrimmed_top_tier():
+    # The whole point: --full / the full-depth tier must not exempt it.
+    for kwargs in ({"full": True}, {"full": False, "full_top": 5}):
+        out = to_markdown([_long_card()], field_caps={"first_mes": 400}, **kwargs)
+        assert "F" * 5000 not in out
+        assert "D" * 5000 in out
+
+
+def test_field_cap_never_loosens_an_existing_cap():
+    # A 2000-char ceiling must not un-trim a field the 300-char tier cap
+    # already trimmed - the tighter of the two wins.
+    out = to_markdown([_long_card()], full=False, max_chars=300, full_top=0,
+                      field_caps={"first_mes": 2000})
+    assert "F" * 400 not in out
+
+
+def test_field_cap_works_in_compact_and_json():
+    compact = to_compact([_long_card()], full=True, field_caps={"first_mes": 500})
+    assert "D" * 5000 in compact and "F" * 5000 not in compact
+
+    payload = json.loads(to_json([_long_card()], full=True, field_caps={"first_mes": 500}))
+    card = payload["cards"][0]
+    assert len(card["description"]) >= 5000
+    assert "F" * 5000 not in card["first_mes"]
+
+
+def test_field_cap_is_reflected_in_the_token_estimate():
+    cards = [_long_card()]
+    uncapped = estimate_export(cards, format="md", full=True)
+    capped = estimate_export(cards, format="md", full=True, field_caps={"first_mes": 300})
+    assert capped["total_tokens"] < uncapped["total_tokens"]
+    assert capped["cards"][0]["tokens"] < uncapped["cards"][0]["tokens"]
+
+
+def test_normalize_field_caps_accepts_both_shapes_and_drops_junk():
+    from cardpack.formats import normalize_field_caps
+
+    assert normalize_field_caps({"first_mes": 1200}) == {"first_mes": 1200}
+    assert normalize_field_caps(["first_mes=1200", "scenario=300"]) == {
+        "first_mes": 1200,
+        "scenario": 300,
+    }
+    assert normalize_field_caps(["nosuchfield=100"]) == {}   # unknown name
+    assert normalize_field_caps(["first_mes=abc"]) == {}     # unparseable
+    assert normalize_field_caps(["first_mes=0"]) == {}       # non-positive
+    assert normalize_field_caps(["first_mes"]) == {}         # missing "="
+    assert normalize_field_caps(None) == {}
