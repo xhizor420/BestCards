@@ -133,6 +133,14 @@ _GROUP_NAME_RE = re.compile(r"\s(?:&|\+|and)\s|,|\bfamily\b|\btwins\b|\bsisters\
 _INSTRUCTIONS_BLOCK_RE = re.compile(r"<instructions>", re.IGNORECASE)
 # A leading status/header line like "11:12 PM | August 6 | 11°C Raining | Apartment Hallway"
 _STATUS_LINE_RE = re.compile(r"^[^\n|]{1,60}\|[^\n|]{1,60}\|[^\n]{1,120}$")
+# How a first message OPENS and CLOSES, which is most of what makes one
+# work as a hook. The preamble already promises the corpus will teach
+# "what makes a first_mes hook effective", and first messages are ~21% of
+# a real export, but the only thing measured about them was paragraph
+# count - so the model got no guidance on the two choices that actually
+# shape an opening.
+_OPENS_WITH_ACTION_RE = re.compile(r"^[\s>#]*\*\S")
+_ENDS_ON_SPEECH_RE = re.compile(r"[\"”][\s*]*$")
 
 # The six fields the export is built around, in template order.
 CORE_FIELDS = ("name", "description", "personality", "scenario", "first_mes", "mes_example")
@@ -327,6 +335,12 @@ def analyze_conventions(cards: Iterable[Card]) -> dict:
         "quoted_speech": sum(1 for c in with_first_mes if _QUOTED_SPEECH_RE.search(c.first_mes)),
         "backtick_thoughts": sum(1 for t in combined_text if _BACKTICK_THOUGHT_RE.search(t)),
         "median_first_mes_paragraphs": round(statistics.median(first_mes_paragraphs)) if first_mes_paragraphs else 0,
+        "first_mes_opens_action": sum(
+            1 for c in with_first_mes if _OPENS_WITH_ACTION_RE.match(c.first_mes.lstrip())
+        ),
+        "first_mes_ends_speech": sum(
+            1 for c in with_first_mes if _ENDS_ON_SPEECH_RE.search(c.first_mes.rstrip())
+        ),
         "first_mes_status_line": sum(
             1 for c in with_first_mes if _STATUS_LINE_RE.match(_first_nonempty_line(c.first_mes))
         ),
@@ -516,6 +530,20 @@ def build_style_sections(conv: dict) -> dict:
         add(conv["quoted_speech"], n_first, 'Put spoken dialogue in "double quotes".')
     if _common(conv["backtick_thoughts"], total):
         add(conv["backtick_thoughts"], total, "Put inner thoughts in `backticks`.")
+    if _common(conv["first_mes_opens_action"], n_first):
+        add(
+            conv["first_mes_opens_action"],
+            n_first,
+            "Open First Message on an *action or narration beat* — set the scene and put the "
+            "character in motion first, rather than starting on a line of dialogue.",
+        )
+    if _common(conv["first_mes_ends_speech"], n_first):
+        add(
+            conv["first_mes_ends_speech"],
+            n_first,
+            "End First Message on the character's spoken line, so the scene hands the turn "
+            "straight to {{user}} rather than trailing off in narration.",
+        )
     if _common(conv["first_mes_status_line"], n_first):
         add(
             conv["first_mes_status_line"],

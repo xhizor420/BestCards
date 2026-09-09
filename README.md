@@ -101,6 +101,14 @@ The `Example Dialogue:` slot in the template is then filled with a
 correctly-formatted sample built from those same detected conventions, so
 the file *shows* the shape rather than describing it.
 
+First messages get the same treatment. They are ~21% of a real export, and
+the preamble promises the corpus will teach "what makes a first_mes hook
+effective", but the only thing measured about them used to be paragraph
+count. Now how one *opens* and *closes* is measured too — on a real 33-card
+corpus, 32 of 33 (97%) open on an action beat rather than a line of
+dialogue, which is exactly the kind of near-universal habit a model won't
+infer but will follow when told.
+
 This never invents a house style: a convention is only reported when a
 majority of cards that have the relevant field actually use it, and only
 when at least 3 cards carry that field at all. A small or stylistically

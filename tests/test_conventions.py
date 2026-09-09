@@ -510,3 +510,39 @@ def test_field_guidance_spells_the_section_the_way_the_corpus_does():
     marked = analyze_conventions(_dossier_corpus())
     note = next(g for g in build_field_guidance(marked) if g["field"] == "personality")["note"]
     assert "`>Personality` section" in note
+
+
+# --- how a first message opens and closes ---------------------------------
+# The preamble promises the corpus teaches "what makes a first_mes hook
+# effective", and first messages are ~21% of a real export, but the only
+# thing measured about them was paragraph count.
+
+
+def test_detects_first_messages_that_open_on_an_action_beat():
+    cards = [
+        _card(name=f"C{i}", first_mes='*She looks up from her drink.*\n\n"You\'re late."')
+        for i in range(5)
+    ]
+    conv = analyze_conventions(cards)
+    assert conv["first_mes_opens_action"] == 5
+    joined = "\n".join(build_style_sections(conv)["shared"] + build_style_sections(conv)["touches"])
+    assert "action or narration beat" in joined
+
+
+def test_a_first_message_opening_on_dialogue_is_not_an_action_beat():
+    cards = [_card(name=f"C{i}", first_mes='"You\'re late," she says, *not looking up.*') for i in range(5)]
+    assert analyze_conventions(cards)["first_mes_opens_action"] == 0
+
+
+def test_detects_first_messages_that_end_on_spoken_dialogue():
+    ends = [_card(name=f"E{i}", first_mes='*She stands.* "Well? Say something."') for i in range(5)]
+    trails = [_card(name=f"T{i}", first_mes='"Well?" *She waits, tapping one boot.*') for i in range(5)]
+    assert analyze_conventions(ends)["first_mes_ends_speech"] == 5
+    assert analyze_conventions(trails)["first_mes_ends_speech"] == 0
+
+
+def test_first_message_hook_lines_are_not_reported_for_a_mixed_corpus():
+    cards = [_card(name="A", first_mes='*She waits.* "Hi."')]
+    cards += [_card(name=f"B{i}", first_mes="Plain narration with no beat and no speech.") for i in range(9)]
+    joined = "\n".join(build_convention_lines(analyze_conventions(cards)))
+    assert "action or narration beat" not in joined
