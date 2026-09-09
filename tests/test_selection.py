@@ -123,3 +123,61 @@ def test_no_pins_leaves_the_ranking_untouched():
 def test_unknown_pins_are_ignored():
     cards = [_named("A", "a.png"), _named("B", "b.png")]
     assert [c.name for c in apply_pins(cards, ["missing.png"])] == ["A", "B"]
+
+
+# --- corpus consistency ---------------------------------------------------
+# More cards is not monotonically better. On a real 113-card corpus the top
+# 50 agreed on one structure 98% of the time - so the export stated it as
+# the house style - while all 113 agreed only 43%, demoting the very same
+# instruction to "one option among several".
+
+from cardpack.selection import consistency_note, structure_consistency  # noqa: E402
+
+
+def _plain(name):
+    return _card(name=name, description="Just a plain prose description, no sections.")
+
+
+def test_a_consistent_corpus_is_reported_as_teaching_one_style():
+    stats = structure_consistency([_named(f"C{i}", f"{i}.png") for i in range(25)])
+    assert stats["share"] == 1.0
+    assert stats["stable"] is True
+    note = " ".join(consistency_note(stats))
+    assert "house style" in note
+    assert "single clear pattern" in note
+
+
+def test_a_diluted_corpus_is_called_out_with_the_agreeing_prefix():
+    # 25 structured cards followed by 25 unstructured ones: exactly the
+    # shape of a corpus that grew past its own consistency.
+    cards = [_named(f"S{i}", f"s{i}.png") for i in range(25)] + [_plain(f"P{i}") for i in range(25)]
+    stats = structure_consistency(cards)
+    assert stats["share"] == 0.5
+    # The LARGEST prefix still clearing the bar, not the run of structured
+    # cards: 25 of the first 31 is 81%, still the house style; 25 of 32 is
+    # 78% and no longer is. A few stragglers inside the set are fine.
+    assert stats["agreeing_prefix"] == 31
+    note = " ".join(consistency_note(stats))
+    assert "one approach among several" in note
+    assert "top 31 cards do agree" in note
+
+
+def test_a_small_corpus_is_flagged_as_not_yet_stable():
+    # Below the stability floor one card's own headings can be reported as
+    # the house style, so the advice is "add more", not "trim".
+    stats = structure_consistency([_named(f"C{i}", f"{i}.png") for i in range(8)])
+    assert stats["stable"] is False
+    note = " ".join(consistency_note(stats))
+    assert "unstable" in note
+    assert "a few more comparable cards" in note
+
+
+def test_consistency_ignores_cards_with_no_description():
+    cards = [_named("A", "a.png"), _card(name="Empty", description="")]
+    assert structure_consistency(cards)["cards"] == 1
+
+
+def test_consistency_is_safe_on_an_empty_corpus():
+    stats = structure_consistency([])
+    assert stats == {"cards": 0, "structured": 0, "share": 0.0, "agreeing_prefix": 0, "stable": False}
+    assert consistency_note(stats) == []

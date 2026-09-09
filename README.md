@@ -282,6 +282,43 @@ unknown names are reported and ignored rather than aborting a batch.
 Detected conventions are measured before any truncation, so capping a
 field never changes what the house-style block reports about it.
 
+#### How many cards is optimal — it isn't a token number
+
+More cards is **not** monotonically better, and the failure is invisible.
+Measured on a real 113-card corpus, ranked best-first, taking the top N:
+
+| cards | agree on one structure | what the export can say | ~tokens (full) |
+| --- | --- | --- | --- |
+| 10 | 100% | *vocabulary still unstable* | 51k |
+| 20 | 100% | **"this is the house style — follow it"** | 92k |
+| 25 | 100% | **"this is the house style — follow it"** | 108k |
+| 50 | 98% | **"this is the house style — follow it"** | 201k |
+| 65 | 75% | "one option among several" | 260k |
+| 113 | 43% | "one option among several" | 397k |
+
+The extra 63 cards added no information — they *diluted* the signal. At 50
+cards the export states the dossier structure as the house style; at 113 the
+identical structure gets demoted to one approach among several, because
+share is what decides whether a convention is presented as a rule.
+
+Two floors bound the useful range. Below ~20 cards the section vocabulary
+is still unstable — one card's own headings (`Powers/Skills`, `Likes`) get
+reported as house style, and the list only settles from N=20. Above the
+point where cards stop agreeing, the guidance weakens. **20–50 consistent
+cards is the sweet spot**, and since ~25 full cards is about 108k tokens,
+context and consistency happen to bottom out in the same place.
+
+So the tool reports which side of that line a corpus is on, in the CLI and
+under the UI's token counter:
+
+```
+29 of 57 cards (51%) share one description structure, so the export can only
+offer it as one approach among several. Your top 36 cards do agree (80%+).
+```
+
+It never drops cards on its own — which cards are worth keeping is the
+curator's call. It reports what the numbers do and leaves the decision alone.
+
 #### When the corpus outgrows a single prompt
 
 113 cards of full 8,000-character dossiers comes to **~394,000 tokens** —

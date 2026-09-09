@@ -329,3 +329,20 @@ button {
   font-size: 0.88rem;
   line-height: 1.45;
 }
+
+.consistency-note {
+  margin: -0.5rem 0 1rem;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text-muted);
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.consistency-note.is-strong {
+  border-color: var(--success);
+  color: var(--text);
+  background: color-mix(in srgb, var(--success) 8%, var(--surface));
+}

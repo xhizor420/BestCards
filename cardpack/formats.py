@@ -54,7 +54,7 @@ from .conventions import (
     build_field_guidance,
     build_style_sections,
 )
-from .selection import exemplar_names
+from .selection import consistency_note, exemplar_names, structure_consistency
 from .stats import (
     DEFAULT_TOKENIZER,
     build_corpus_stats,
@@ -877,4 +877,10 @@ def estimate_export(
         # UI's controls rather than the CLI's flags, since that's where the
         # reader is when they see it.
         "context_warning": context_warning_ui(total_tc.count, card_count=len(cards)),
+        # Whether the corpus is teaching ONE style or several. More cards
+        # is not monotonically better: past the point where they stop
+        # agreeing, the export can only offer the pattern as an option
+        # instead of stating it as the house style.
+        "consistency": structure_consistency(cards),
+        "consistency_note": consistency_note(structure_consistency(cards)),
     }

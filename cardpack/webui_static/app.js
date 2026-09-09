@@ -30,6 +30,7 @@ const fieldCheckboxes = Array.from(document.querySelectorAll(".field-checkbox"))
 const totalTokensEl = document.getElementById("totalTokens");
 const tokenMethodEl = document.getElementById("tokenMethod");
 const contextWarningEl = document.getElementById("contextWarning");
+const consistencyNoteEl = document.getElementById("consistencyNote");
 const cardGrid = document.getElementById("cardGrid");
 const exportBtn = document.getElementById("exportBtn");
 const exportResult = document.getElementById("exportResult");
@@ -259,6 +260,22 @@ function shortMethodLabel(method) {
 // ceiling). The failure is quiet - the model answers from whatever it did
 // see, which looks identical to it ignoring the instructions - so the
 // number alone isn't enough; say what it means and what to do about it.
+// More cards is not monotonically better. Past the point where they stop
+// agreeing on a structure, the export can only offer that structure as one
+// option instead of stating it as the house style - so the count alone
+// doesn't tell you whether adding cards helped.
+function renderConsistency(data) {
+  const notes = data.consistency_note || [];
+  const st = data.consistency || {};
+  if (!notes.length) {
+    consistencyNoteEl.classList.add("hidden");
+    return;
+  }
+  consistencyNoteEl.textContent = notes.join(" ");
+  consistencyNoteEl.classList.toggle("is-strong", (st.share || 0) >= 0.8 && st.stable);
+  consistencyNoteEl.classList.remove("hidden");
+}
+
 function renderContextWarning(data) {
   const notes = data.context_warning || [];
   if (!notes.length) {
@@ -280,6 +297,7 @@ async function refreshEstimate() {
     totalTokensEl.textContent = "0";
     tokenMethodEl.textContent = "";
     contextWarningEl.classList.add("hidden");
+    consistencyNoteEl.classList.add("hidden");
     return;
   }
   const requestId = ++estimateRequestId;
@@ -297,6 +315,7 @@ async function refreshEstimate() {
     tokenMethodEl.textContent = shortMethodLabel(data.method);
     tokenMethodEl.title = data.method;
     renderContextWarning(data);
+    renderConsistency(data);
     // The server returns cards in export order (ranked, pins first), so
     // map them back onto tiles by name to label the full-depth tier.
     const fullTop = fullCheckbox.checked ? data.cards.length : currentExportOptions().full_top;

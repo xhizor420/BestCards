@@ -117,3 +117,95 @@ def apply_pins(cards: list[Card], pinned_files: list[str] | None) -> list[Card]:
     pinned = [c for c in cards if c.source_file in wanted]
     rest = [c for c in cards if c.source_file not in wanted]
     return pinned + rest
+
+
+# --- how much the corpus agrees with itself -------------------------------
+# Adding cards is not monotonically good, and the failure is invisible.
+# Measured on a real 113-card corpus, ranked best-first: the top 50 cards
+# used the same dossier structure 98% of the time, so the export told the
+# model "this is the house style, follow it". The remaining 63 dropped that
+# to 43%, which demotes the very same instruction to "here is one option
+# among several". The extra cards did not add information - they diluted
+# the signal the corpus exists to carry.
+#
+# So the useful question is not "how many tokens fit" but "how far down the
+# ranking do the cards still agree with each other".
+
+# A convention at or above this share reads as the house style rather than
+# one option - the same bar conventions.py uses to promote a line into the
+# "shared, just follow it" group.
+_AGREEMENT_BAR = 0.8
+# Below this many cards the vocabulary is still unstable: on the same real
+# corpus, one card's idiosyncratic headings (Powers/Skills, Likes,
+# Dislikes) were still being reported as house style at N=15, and the
+# section list only settled from N=20 onward.
+_MIN_STABLE_CARDS = 20
+
+
+def structure_consistency(cards: list[Card]) -> dict:
+    """How much of this corpus shares one description structure.
+
+    Returns the share for the whole set plus `agreeing_prefix`: the largest
+    number of top-ranked cards that still clear the agreement bar. Cards
+    are assumed already ranked best-first; the per-card test runs once and
+    every prefix is then a running total, so this is cheap enough to call
+    on every keystroke in a UI.
+    """
+    described = [c for c in cards if c.description.strip()]
+    if not described:
+        return {"cards": 0, "structured": 0, "share": 0.0, "agreeing_prefix": 0, "stable": False}
+
+    flags = [1 if _section_headers(c.description) else 0 for c in described]
+    running = 0
+    agreeing_prefix = 0
+    for i, f in enumerate(flags, 1):
+        running += f
+        if running / i >= _AGREEMENT_BAR:
+            agreeing_prefix = i
+
+    total = len(described)
+    structured = sum(flags)
+    return {
+        "cards": total,
+        "structured": structured,
+        "share": structured / total,
+        "agreeing_prefix": agreeing_prefix,
+        "stable": total >= _MIN_STABLE_CARDS,
+    }
+
+
+def consistency_note(stats: dict) -> list[str]:
+    """Plain-language read on whether this corpus is teaching one style.
+
+    Says nothing when the corpus already agrees with itself - there is no
+    advice to give - and never proposes dropping cards on its own: which
+    cards are worth keeping is the curator's call, so this reports what the
+    numbers do and leaves the decision alone.
+    """
+    total, share, prefix = stats["cards"], stats["share"], stats["agreeing_prefix"]
+    if not total:
+        return []
+    if total < _MIN_STABLE_CARDS:
+        return [
+            f"Only {total} cards carry a description. Below about {_MIN_STABLE_CARDS} the detected "
+            f"section vocabulary is still unstable — one card's own headings can be reported as "
+            f"the house style — so a few more comparable cards will sharpen the guidance."
+        ]
+    if share >= _AGREEMENT_BAR:
+        return [
+            f"{stats['structured']} of {total} cards ({share:.0%}) share one description "
+            f"structure, so the export states it as the house style to follow rather than as "
+            f"one option among several. This corpus is teaching a single clear pattern."
+        ]
+    lines = [
+        f"Only {stats['structured']} of {total} cards ({share:.0%}) share one description "
+        f"structure, so the export can only offer it as one approach among several — the "
+        f"strongest instruction it can give is reserved for a pattern most cards agree on."
+    ]
+    if prefix >= _MIN_STABLE_CARDS:
+        lines.append(
+            f"Your top {prefix} cards do agree ({_AGREEMENT_BAR:.0%}+). Cards ranked below that "
+            f"are pulling the shared pattern apart, so a smaller, more consistent set would give "
+            f"the model a stronger instruction than this larger one does."
+        )
+    return lines

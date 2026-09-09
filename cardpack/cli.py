@@ -14,7 +14,7 @@ from .formats import (
     normalize_field_caps,
 )
 from .png_chunks import NotAPngError, read_text_chunks_from_file
-from .selection import rank_cards, select_best
+from .selection import consistency_note, rank_cards, select_best, structure_consistency
 from .stats import TOKENIZER_PRESETS, context_warning, count_tokens
 
 
@@ -229,6 +229,13 @@ def main(argv: list[str] | None = None) -> int:
         print("  (fell back to the heuristic - see the message above for why)")
     elif not tc.exact:
         print("  (pass --tokenizer deepseek|glm|gpt for an exact count; see --help for details)")
+
+    # More cards is not monotonically better: past the point where they
+    # stop agreeing, the export can only offer the shared pattern as an
+    # option instead of stating it as the house style. Say which side of
+    # that line this corpus is on.
+    for j, note in enumerate(consistency_note(structure_consistency(cards))):
+        print(f"\n{note}" if j == 0 else f"  {note}")
 
     size_notes = context_warning(tc.count, card_count=len(cards))
     if size_notes:
